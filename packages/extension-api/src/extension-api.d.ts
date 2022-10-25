@@ -53,6 +53,8 @@ declare module '@tmpwip/extension-api' {
      * Should only be specified for `checkbox` or `radio` type menu items.
      */
     checked?: boolean;
+
+    submenu?: MenuItem[];
   }
 
   export class Disposable {
@@ -112,6 +114,7 @@ declare module '@tmpwip/extension-api' {
   }
 
   export type ProviderStatus =
+    | 'not-installed'
     | 'installed'
     | 'configured'
     | 'ready'
@@ -123,15 +126,32 @@ declare module '@tmpwip/extension-api' {
     | 'unknown';
 
   export interface ProviderLifecycle {
+    initialize?(initContext: LifecycleContext): Promise<void>;
     start(startContext: LifecycleContext): Promise<void>;
-    stop(startContext: LifecycleContext): Promise<void>;
+    stop(stopContext: LifecycleContext): Promise<void>;
     status(): ProviderStatus;
+  }
+
+  export interface ProviderProxySettings {
+    httpProxy: string;
+    httpsProxy: string;
+    noProxy: string;
+  }
+
+  export interface ProviderDetectionCheck {
+    name: string;
+    details?: string;
+    status: boolean;
   }
 
   export interface ProviderOptions {
     id: string;
     name: string;
     status: ProviderStatus;
+    version?: string;
+    images?: ProviderImages;
+    links?: ProviderLinks[];
+    detectionChecks?: ProviderDetectionCheck[];
   }
 
   export type ProviderConnectionStatus = 'started' | 'stopped' | 'starting' | 'stopping' | 'unknown';
@@ -179,8 +199,56 @@ declare module '@tmpwip/extension-api' {
 
   // create programmatically a ContainerProviderConnection
   export interface ContainerProviderConnectionFactory {
+    initialize(): Promise<void>;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     create(params: { [key: string]: any }): Promise<void>;
+  }
+
+  export interface Link {
+    title: string;
+    url: string;
+  }
+  export type CheckResultLink = Link;
+
+  export interface CheckResult {
+    successful: boolean;
+    description?: string;
+    docLinks?: CheckResultLink[];
+  }
+
+  export interface InstallCheck {
+    title: string;
+    execute(): Promise<CheckResult>;
+  }
+
+  export interface ProviderInstallation {
+    preflightChecks?(): InstallCheck[];
+    // ask to install the provider
+    install(logger: Logger): Promise<void>;
+  }
+
+  export interface ProviderUpdate {
+    version: string;
+    // ask to update the provider
+    update(logger: Logger): Promise<void>;
+
+    preflightChecks?(): InstallCheck[];
+  }
+
+  /**
+   * By providing this interface, when Podman Desktop is starting
+   * It'll start the provider through this interface.
+   * It can be turned off/on by the user.
+   */
+  export interface ProviderAutostart {
+    start(logger: Logger): Promise<void>;
+  }
+
+  export type ProviderLinks = Link;
+
+  export interface ProviderImages {
+    icon?: string | { light: string; dark: string };
+    logo?: string | { light: string; dark: string };
   }
 
   export interface Provider {
@@ -190,10 +258,45 @@ declare module '@tmpwip/extension-api' {
     registerContainerProviderConnection(connection: ContainerProviderConnection): Disposable;
     registerKubernetesProviderConnection(connection: KubernetesProviderConnection): Disposable;
     registerLifecycle(lifecycle: ProviderLifecycle): Disposable;
+    // Sets the proxy that has been defined in the provider
+    registerProxy(proxySettings: ProxySettings): Disposable;
+    // Podman Desktop has updated the settings, propagates the changes to the provider.
+    onDidUpdateProxy: Event<ProxySettings>;
+
+    // register installation flow
+    registerInstallation(installation: ProviderInstallation): Disposable;
+
+    // register update flow
+    registerUpdate(update: ProviderUpdate): Disposable;
+
+    // register autostart flow
+    registerAutostart(autostart: ProviderAutostart): Disposable;
+
     dispose(): void;
     readonly name: string;
     readonly id: string;
     readonly status: ProviderStatus;
+    updateStatus(status: ProviderStatus): void;
+    onDidUpdateStatus: Event<ProviderStatus>;
+
+    // version may not be defined
+    readonly version: string | undefined;
+    updateVersion(version: string): void;
+    onDidUpdateVersion: Event<string>;
+
+    readonly images: ProviderImages;
+
+    readonly links: ProviderLinks[];
+
+    // detection checks for the provider
+    readonly detectionChecks: ProviderDetectionCheck[];
+
+    // update the detection checks for the provider
+    // it may happen after an update or an installation
+    updateDetectionChecks(detectionChecks: ProviderDetectionCheck[]): void;
+
+    // notify that detection checks have changed
+    onDidUpdateDetectionChecks: Event<ProviderDetectionCheck[]>;
   }
 
   export namespace commands {
@@ -240,11 +343,17 @@ declare module '@tmpwip/extension-api' {
 
   export namespace tray {
     /**
-     *
+     * Creates a menu not related to a Provider
+     * @param item the item to add in the tray menu
+     */
+    export function registerMenuItem(item: MenuItem): Disposable;
+
+    /**
+     * Creates a menu in the tray for a given Provider
      * @param providerId the same as the id on Provider provided by createProvider() method, need to place menu item properly
      * @param item
      */
-    export function registerMenuItem(providerId: string, item: MenuItem): Disposable;
+    export function registerProviderMenuItem(providerId: string, item: MenuItem): Disposable;
   }
 
   export namespace configuration {
@@ -394,6 +503,101 @@ declare module '@tmpwip/extension-api' {
     silent?: boolean;
   }
 
+  /**
+   * Aligned to the left side.
+   */
+  export const StatusBarAlignLeft = 'LEFT';
+  /**
+   * Aligned to the right side.
+   */
+  export const StatusBarAlignRight = 'RIGHT';
+  /**
+   * Represents the alignment of status bar items.
+   */
+  export type StatusBarAlignment = typeof StatusBarAlignLeft | typeof StatusBarAlignRight;
+
+  /**
+   * Default priority for the status bar items.
+   */
+  export const StatusBarItemDefaultPriority = 0;
+
+  /**
+   * A status bar item is a status bar contribution that can
+   * show text and icons and run a command on click.
+   */
+  export interface StatusBarItem {
+    /**
+     * The alignment of this item.
+     */
+    readonly alignment: StatusBarAlignment;
+    /**
+     * The priority of this item. Higher value means the item should be shown more to the left
+     * or more to the right.
+     */
+    readonly priority: number;
+    /**
+     * The text to show for the entry.
+     */
+    text?: string;
+    /**
+     * The tooltip text when you hover over this entry.
+     */
+    tooltip?: string;
+    /**
+     * Icon class that is used to display the particular icon from the Font Awesome icon set.
+     * Icon class should be in format e.g. 'fa fa-toggle-on'. It is possible to provide an icons
+     * for state which can be enabled or disabled.
+     */
+    iconClass?: string | { active: string; inactive: string };
+    /**
+     * Marks an item as disabled. When property is set to true, then icon will be changed to inactive
+     * and there won't be possible to execute a command if it is provided in the following configuration.
+     */
+    enabled: boolean;
+    /**
+     * The identifier of a command to run on click.
+     */
+    command?: string;
+    /**
+     * Arguments that the command handler should be invoked with.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    commandArgs?: any[];
+    /**
+     * Shows the entry in the status bar.
+     */
+    show(): void;
+    /**
+     * Hides the entry in the status bar.
+     */
+    hide(): void;
+  }
+
+  /**
+   * Resource identifier for a resource
+   */
+  export class Uri {
+    private constructor(scheme: string, authority: string, path: string);
+    static file(path: string): Uri;
+    readonly fsPath: string;
+    readonly authority: string;
+    readonly scheme: string;
+    toString(): string;
+  }
+
+  /**
+   * Notifies changes on files or folders.
+   */
+  export interface FileSystemWatcher extends Disposable {
+    readonly onDidCreate: Event<Uri>;
+    readonly onDidChange: Event<Uri>;
+    readonly onDidDelete: Event<Uri>;
+  }
+
+  export namespace fs {
+    export function createFileSystemWatcher(path: string): FileSystemWatcher;
+  }
+
   export namespace window {
     /**
      * Show an information message. Optionally provide an array of items which will be presented as
@@ -435,5 +639,14 @@ declare module '@tmpwip/extension-api' {
      * @param options
      */
     export function showNotification(options: NotificationOptions): Disposable;
+
+    /**
+     * Creates a status bar {@link StatusBarItem} item.
+     *
+     * @param alignment The alignment of the item.
+     * @param priority The priority of the item. Higher values mean more to the left or more to the right.
+     * @return A new status bar item.
+     */
+    export function createStatusBarItem(alignment?: StatusBarAlignment, priority?: number): StatusBarItem;
   }
 }

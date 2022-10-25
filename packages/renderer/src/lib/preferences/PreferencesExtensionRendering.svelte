@@ -1,18 +1,10 @@
 <script lang="ts">
-import { onMount } from 'svelte';
 import { extensionInfos } from '../../stores/extensions';
 import type { ExtensionInfo } from '../../../../main/src/plugin/api/extension-info';
 export let extensionId: string = undefined;
 
-let extensions: ExtensionInfo[] = [];
-onMount(() => {
-  extensionInfos.subscribe(value => {
-    extensions = value;
-  });
-});
-
 let extensionInfo: ExtensionInfo;
-$: extensionInfo = extensions.find(extension => extension.id === extensionId);
+$: extensionInfo = $extensionInfos.find(extension => extension.id === extensionId);
 
 async function stopExtension() {
   await window.stopExtension(extensionInfo.id);
@@ -24,7 +16,7 @@ async function startExtension() {
 }
 </script>
 
-<div class="flex flex-1 flex-col">
+<div class="flex flex-1 flex-col bg-zinc-800 px-2">
   {#if extensionInfo}
     <div class="pl-1 py-2">
       <h1 class="capitalize text-xl">{extensionInfo.name} Extension</h1>

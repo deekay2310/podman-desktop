@@ -8,7 +8,7 @@ const title = 'Podman Desktop';
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
-  title:'Podman Desktop',
+  title: 'Podman Desktop',
   url: 'https://podman-desktop.io',
   baseUrl: '/',
   onBrokenLinks: 'throw',
@@ -69,10 +69,10 @@ const config = {
             position: 'left',
             label: 'Documentation',
           },
-          {to: '/core-values', label: 'Core Values', position: 'left'},
-          {to: '/features', label: 'Features', position: 'left'},
-          {to: '/downloads', label: 'Downloads', position: 'left'},
-          {to: '/extend', label: 'Extend', position: 'left'},
+          { to: '/core-values', label: 'Core Values', position: 'left' },
+          { to: '/features', label: 'Features', position: 'left' },
+          { to: '/downloads', label: 'Downloads', position: 'left' },
+          { to: '/extend', label: 'Extend', position: 'left' },
           /*{to: '/blog', label: 'Blog', position: 'left'},*/
           {
             href: 'https://github.com/containers/podman-desktop',
@@ -89,6 +89,10 @@ const config = {
               {
                 label: 'Introduction',
                 to: '/docs/intro',
+              },
+              {
+                label: 'Troubleshooting',
+                to: '/docs/troubleshooting',
               },
             ],
           },
@@ -107,6 +111,10 @@ const config = {
                 label: 'Chat with us',
                 href: 'https://discordapp.com/invite/TCTB38RWpf',
               },
+              {
+                label: 'Podman Desktop Planning & Roadmap',
+                href: 'https://github.com/containers/podman-desktop/projects?type=beta',
+              },
             ],
           },
         ],
@@ -115,6 +123,22 @@ const config = {
       prism: {
         theme: lightCodeTheme,
         darkTheme: darkCodeTheme,
+      },
+      algolia: {
+        // The application ID provided by Algolia
+        appId: 'MR01ANKQ9S',
+
+        // Public API key: it is safe to commit it
+        apiKey: '20bda7620dbcebd6a354840b4f92ac8e',
+
+        // The index name to query
+        indexName: 'podman-desktop',
+
+        // Optional
+        contextualSearch: true,
+
+        // Optional
+        searchPagePath: 'search',
       },
     }),
 };

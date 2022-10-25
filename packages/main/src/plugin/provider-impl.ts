@@ -19,6 +19,7 @@
 import { Disposable } from './types/disposable';
 import type { IDisposable } from './types/disposable';
 import type { ContainerProviderRegistry } from './container-registry';
+
 import type {
   ContainerProviderConnection,
   KubernetesProviderConnection,
@@ -28,8 +29,17 @@ import type {
   ProviderOptions,
   ProviderStatus,
   ProviderConnectionStatus,
+  ProviderProxySettings,
+  Event,
+  ProviderInstallation,
+  ProviderLinks,
+  ProviderImages,
+  ProviderDetectionCheck,
+  ProviderUpdate,
+  ProviderAutostart,
 } from '@tmpwip/extension-api';
 import type { ProviderRegistry } from './provider-registry';
+import { Emitter } from './events/emitter';
 
 export class ProviderImpl implements Provider, IDisposable {
   private containerProviderConnections: Set<ContainerProviderConnection>;
@@ -38,6 +48,25 @@ export class ProviderImpl implements Provider, IDisposable {
   // optional factory
   private _containerProviderConnectionFactory: ContainerProviderConnectionFactory | undefined = undefined;
   private _status: ProviderStatus;
+
+  private proxySettings: ProviderProxySettings | undefined;
+
+  private readonly _onDidUpdateProxy = new Emitter<ProviderProxySettings>();
+  readonly onDidUpdateProxy: Event<ProviderProxySettings> = this._onDidUpdateProxy.event;
+
+  private readonly _onDidUpdateStatus = new Emitter<ProviderStatus>();
+  readonly onDidUpdateStatus: Event<ProviderStatus> = this._onDidUpdateStatus.event;
+
+  private _version: string | undefined;
+  private readonly _onDidUpdateVersion = new Emitter<string>();
+  readonly onDidUpdateVersion: Event<string> = this._onDidUpdateVersion.event;
+
+  private _links: ProviderLinks[];
+  private _images: ProviderImages;
+
+  private _detectionChecks: ProviderDetectionCheck[];
+  private readonly _onDidUpdateDetectionChecks = new Emitter<ProviderDetectionCheck[]>();
+  readonly onDidUpdateDetectionChecks: Event<ProviderDetectionCheck[]> = this._onDidUpdateDetectionChecks.event;
 
   constructor(
     private _internalId: string,
@@ -49,6 +78,11 @@ export class ProviderImpl implements Provider, IDisposable {
     this.containerProviderConnections = new Set();
     this.kubernetesProviderConnections = new Set();
     this._status = providerOptions.status;
+    this._version = providerOptions.version;
+
+    this._links = providerOptions.links || [];
+    this._detectionChecks = providerOptions.detectionChecks || [];
+    this._images = providerOptions.images || {};
 
     // monitor connection statuses
     setInterval(async () => {
@@ -63,6 +97,25 @@ export class ProviderImpl implements Provider, IDisposable {
     }, 2000);
   }
 
+  registerProxy(proxySettings: ProviderProxySettings): Disposable {
+    this.proxySettings = proxySettings;
+    return Disposable.create(() => {
+      this.proxySettings = undefined;
+    });
+  }
+
+  updateProxy(proxy: ProviderProxySettings): void {
+    // notify
+    this._onDidUpdateProxy.fire(proxy);
+
+    // update
+    this.proxySettings = proxy;
+  }
+
+  get proxy(): ProviderProxySettings | undefined {
+    return this.proxySettings;
+  }
+
   get containerProviderConnectionFactory(): ContainerProviderConnectionFactory | undefined {
     return this._containerProviderConnectionFactory;
   }
@@ -71,8 +124,37 @@ export class ProviderImpl implements Provider, IDisposable {
     return this.providerOptions.name;
   }
 
-  setStatus(status: ProviderStatus): void {
+  get version(): string | undefined {
+    return this._version;
+  }
+  get links(): ProviderLinks[] {
+    return this._links;
+  }
+  get detectionChecks(): ProviderDetectionCheck[] {
+    return this._detectionChecks;
+  }
+
+  get images(): ProviderImages {
+    return this._images;
+  }
+
+  updateStatus(status: ProviderStatus): void {
+    if (status !== this._status) {
+      this._onDidUpdateStatus.fire(status);
+    }
     this._status = status;
+  }
+
+  updateVersion(version: string): void {
+    if (version !== this._version) {
+      this._onDidUpdateVersion.fire(version);
+    }
+    this._version = version;
+  }
+
+  updateDetectionChecks(detectionChecks: ProviderDetectionCheck[]): void {
+    this._detectionChecks = detectionChecks;
+    this._onDidUpdateDetectionChecks.fire(detectionChecks);
   }
 
   get status(): ProviderStatus {
@@ -129,5 +211,17 @@ export class ProviderImpl implements Provider, IDisposable {
 
   registerLifecycle(lifecycle: ProviderLifecycle): Disposable {
     return this.providerRegistry.registerLifecycle(this, lifecycle);
+  }
+
+  registerInstallation(installation: ProviderInstallation): Disposable {
+    return this.providerRegistry.registerInstallation(this, installation);
+  }
+
+  registerUpdate(update: ProviderUpdate): Disposable {
+    return this.providerRegistry.registerUpdate(this, update);
+  }
+
+  registerAutostart(update: ProviderAutostart): Disposable {
+    return this.providerRegistry.registerAutostart(this, update);
   }
 }

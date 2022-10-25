@@ -20,9 +20,10 @@ import { app, Tray } from 'electron';
 import './security-restrictions';
 import { restoreOrCreateWindow } from '/@/mainWindow';
 import { TrayMenu } from './tray-menu';
-import { isMac } from './util';
+import { isMac, isWindows } from './util';
 import { AnimatedTray } from './tray-animate-icon';
 import { PluginSystem } from './plugin';
+import { StartupInstall } from './system/startup-install';
 
 /**
  * Prevent multiple instances
@@ -52,6 +53,13 @@ app.on('window-all-closed', () => {
  * @see https://www.electronjs.org/docs/v14-x-y/api/app#event-activate-macos Event: 'activate'
  */
 app.on('activate', restoreOrCreateWindow);
+
+/**
+ *  @see https://www.electronjs.org/docs/latest/api/app#appsetappusermodelidid-windows
+ */
+if (isWindows) {
+  app.setAppUserModelId(app.name);
+}
 
 /**
  * Create app window when background process will be ready
@@ -90,12 +98,18 @@ if (import.meta.env.PROD) {
 
 let tray: Tray | null = null;
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   const animatedTray = new AnimatedTray();
   tray = new Tray(animatedTray.getDefaultImage());
   animatedTray.setTray(tray);
   const trayMenu = new TrayMenu(tray, animatedTray);
   // start extensions
   const pluginSystem = new PluginSystem(trayMenu);
-  pluginSystem.initExtensions();
+  const extensionLoader = await pluginSystem.initExtensions();
+
+  const configurationRegistry = extensionLoader.getConfigurationRegistry();
+
+  // configure automatic startup
+  const automaticStartup = new StartupInstall(configurationRegistry);
+  await automaticStartup.configure();
 });

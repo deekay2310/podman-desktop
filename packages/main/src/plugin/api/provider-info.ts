@@ -16,7 +16,15 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import type { ProviderConnectionStatus, ProviderStatus } from '@tmpwip/extension-api';
+import type {
+  ProviderConnectionStatus,
+  ProviderDetectionCheck,
+  ProviderImages,
+  ProviderLinks,
+  ProviderProxySettings,
+  ProviderStatus,
+  Link,
+} from '@tmpwip/extension-api';
 
 export type LifecycleMethod = 'start' | 'stop' | 'delete';
 
@@ -27,6 +35,7 @@ export interface ProviderContainerConnectionInfo {
     socketPath: string;
   };
   lifecycleMethods?: LifecycleMethod[];
+  type: 'docker' | 'podman';
 }
 
 export interface ProviderKubernetesConnectionInfo {
@@ -48,4 +57,38 @@ export interface ProviderInfo {
   lifecycleMethods?: LifecycleMethod[];
   // can create provider connection from ContainerProviderConnectionFactory params
   containerProviderConnectionCreation: boolean;
+
+  proxySettings?: ProviderProxySettings;
+
+  version?: string;
+
+  links: ProviderLinks[];
+  detectionChecks: ProviderDetectionCheck[];
+
+  images: ProviderImages;
+
+  // can install a provider
+  installationSupport: boolean;
+
+  // can update a provider
+  updateInfo?: {
+    version: string;
+  };
+}
+
+export interface PreflightChecksCallback {
+  startCheck: (status: CheckStatus) => void;
+  endCheck: (status: CheckStatus) => void;
+}
+
+export interface CheckStatus {
+  name: string;
+  successful?: boolean;
+  description?: string;
+  docLinks?: Link[];
+}
+
+export interface PreflightCheckEvent {
+  type: 'start' | 'stop';
+  status: CheckStatus;
 }

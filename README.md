@@ -2,9 +2,8 @@
 Manage different container engines from a single UI and tray icon
 
 <p align="center">
-  <img alt="Podman Desktop" src="https://raw.githubusercontent.com/containers/podman-desktop/media/screenshot.png">
+  <img alt="Podman Desktop" src="/website/static/img/features/homepage.png">
 </p>
-
 
 - [**Overview**](#overview)
 - [**Download**](#download)
@@ -13,6 +12,12 @@ Manage different container engines from a single UI and tray icon
 - [**Communication**](#communication)
 - [**Code of Conduct**](#code-of-conduct)
 - [**License**](#license)
+
+## Join our Early Adopter Program!
+
+We are seeking users who are interested in helping us improve Podman Desktop.
+
+Register your interest to join our Early Adopter Program by filling <a href="https://forms.gle/ow73dV7Ce3YLzoXH7" target="_blank">this form</a>.
 
 ## Overview
 This tool allows to browse, manage lifecycle of containers, inspect containers, images from different container engines.
