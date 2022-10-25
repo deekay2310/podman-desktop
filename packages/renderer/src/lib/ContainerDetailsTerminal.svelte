@@ -6,6 +6,7 @@ import { onMount } from 'svelte';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
+import { getPanelDetailColor } from './color/color';
 
 export let container: ContainerInfoUI;
 let terminalXtermDiv: HTMLDivElement;
@@ -55,7 +56,7 @@ async function refreshTerminal() {
     fontSize,
     lineHeight,
     theme: {
-      background: '#1a1624',
+      background: getPanelDetailColor(),
     },
   });
   const fitAddon = new FitAddon();
@@ -79,7 +80,10 @@ onMount(async () => {
 
 <div class="h-full" bind:this="{terminalXtermDiv}" class:hidden="{container.state !== 'RUNNING'}"></div>
 
-<div class="h-full min-w-full flex flex-col" class:hidden="{container.state === 'RUNNING'}">
+<div
+  class="h-full min-w-full flex flex-col"
+  class:hidden="{container.state === 'RUNNING'}"
+  style="background-color: {getPanelDetailColor()}">
   <div class="pf-c-empty-state h-full">
     <div class="pf-c-empty-state__content">
       <i class="fas fa-terminal pf-c-empty-state__icon" aria-hidden="true"></i>

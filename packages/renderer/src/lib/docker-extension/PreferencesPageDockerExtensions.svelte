@@ -1,10 +1,14 @@
 <script lang="ts">
+import { afterUpdate } from 'svelte';
+
 import { contributions } from '../../stores/contribs';
 let ociImage: string;
 
 let installInProgress: boolean = false;
 let errorInstall: string = '';
 let logs: string[] = [];
+
+let logElement;
 
 async function installDDExtensionFromImage() {
   logs.length = 0;
@@ -25,12 +29,16 @@ async function installDDExtensionFromImage() {
   ociImage = '';
 }
 
+afterUpdate(() => {
+  logElement.scroll({ top: logElement.scrollHeight, behavior: 'smooth' });
+});
+
 function deleteContribution(extensionName: string) {
   window.ddExtensionDelete(extensionName);
 }
 </script>
 
-<div class="flex flex-col h-min">
+<div class="flex flex-col h-min bg-zinc-800">
   <div class="flex flex-1 flex-col p-2 ">
     <p class="capitalize text-xl">Docker Desktop Extensions</p>
     <p class="text-xs">There is an ongoing support of Docker Desktop UI extensions from Podman Desktop.</p>
@@ -38,7 +46,7 @@ function deleteContribution(extensionName: string) {
       You may try to install some of these extensions by providing the image providing the extension.
     </p>
     <p class="text-xs italic">
-      Example: aquasec/trivy-docker-extension:0.4.3 for Trivy extension or redhatdeveloper/openshift-dd-ext:0.0.1-41 for
+      Example: aquasec/trivy-docker-extension:latest for Trivy extension or redhatdeveloper/openshift-dd-ext:latest for
       the OpenShift extension.
     </p>
 
@@ -80,13 +88,14 @@ function deleteContribution(extensionName: string) {
         </div>
       {/if}
 
-      {#if logs.length > 0}
-        <div class="bg-zinc-700 text-gray-200 m-4 ">
-          {#each logs as log}
-            <p class="font-light text-sm">{log}</p>
-          {/each}
-        </div>
-      {/if}
+      <div
+        class:opacity-0="{logs.length === 0}"
+        bind:this="{logElement}"
+        class="bg-zinc-700 text-gray-200 mt-4 h-16 overflow-y-auto">
+        {#each logs as log}
+          <p class="font-light text-sm">{log}</p>
+        {/each}
+      </div>
     </div>
   </div>
 

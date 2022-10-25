@@ -1,35 +1,35 @@
 <script lang="ts">
 import Fa from 'svelte-fa/src/fa.svelte';
-import { faCircleUp, faPlayCircle, faTrash } from '@fortawesome/free-solid-svg-icons';
+import {
+  faCircleUp,
+  faHistory,
+  faLayerGroup,
+  faPlayCircle,
+  faRectangleAd,
+  faTrash,
+} from '@fortawesome/free-solid-svg-icons';
 import type { ImageInfoUI } from './ImageInfoUI';
 import { router } from 'tinro';
-import RunContainerModal from './RunContainerModal.svelte';
-import { onMount } from 'svelte';
-import PushImage from './PushImageModal.svelte';
-import PushImageModal from './PushImageModal.svelte';
-import Modal from '../dialogs/Modal.svelte';
 import ListItemButtonIcon from '../ui/ListItemButtonIcon.svelte';
 
-export let hasModalCallback: (flag: boolean) => void;
-export let image: ImageInfoUI;
+export let onRunContainerImage: (imageInfo: ImageInfoUI) => void;
+export let onPushImage: (imageInfo: ImageInfoUI) => void;
 
-let runContainerFromImageModal = false;
-let pushImageModal = false;
-let modalImageInfo: ImageInfoUI;
+export let image: ImageInfoUI;
+export let backgroundColor = 'bg-zinc-800';
+
 let errorMessage: string = undefined;
 let isAuthenticatedForThisImage: boolean = false;
 
 async function runImage(imageInfo: ImageInfoUI) {
-  modalImageInfo = imageInfo;
-  runContainerFromImageModal = true;
+  onRunContainerImage(imageInfo);
 }
 
 $: window.hasAuthconfigForImage(image.name).then(result => (isAuthenticatedForThisImage = result));
-let imageInfoToPush = undefined;
 
-async function deleteImage(imageInfo: ImageInfoUI): Promise<void> {
+async function deleteImage(): Promise<void> {
   try {
-    await window.deleteImage(imageInfo.engineId, imageInfo.id);
+    await window.deleteImage(image.engineId, image.id);
     router.goto('/images/');
   } catch (error) {
     errorMessage = error;
@@ -37,45 +37,41 @@ async function deleteImage(imageInfo: ImageInfoUI): Promise<void> {
 }
 
 async function pushImage(imageInfo: ImageInfoUI): Promise<void> {
-  imageInfoToPush = imageInfo;
-  hasModalCallback(true);
-  pushImageModal = true;
+  onPushImage(imageInfo);
+}
+
+async function showLayersImage(): Promise<void> {
+  router.goto(`/images/${image.id}/${image.engineId}/${image.base64RepoTag}/history`);
 }
 </script>
 
 {#if isAuthenticatedForThisImage}
-  <ListItemButtonIcon title="Push Image" onClick="{() => pushImage(image)}" icon="{faCircleUp}" />
+  <ListItemButtonIcon
+    title="Push Image"
+    onClick="{() => pushImage(image)}"
+    backgroundColor="{backgroundColor}"
+    icon="{faCircleUp}" />
 {/if}
-<ListItemButtonIcon title="Run Image" onClick="{() => runImage(image)}" icon="{faPlayCircle}" />
-<ListItemButtonIcon title="Delete Image" onClick="{() => deleteImage(image)}" icon="{faTrash}" />
-
-{#if pushImageModal}
-  <Modal
-    on:close="{() => {
-      pushImageModal = false;
-    }}">
-    <PushImageModal
-      imageInfoToPush="{imageInfoToPush}"
-      closeCallback="{() => {
-        (pushImageModal = false), hasModalCallback(false);
-      }}" />
-  </Modal>
+<ListItemButtonIcon
+  title="Run Image"
+  onClick="{() => runImage(image)}"
+  backgroundColor="{backgroundColor}"
+  icon="{faPlayCircle}" />
+{#if !image.inUse}
+  <ListItemButtonIcon
+    title="Delete Image"
+    onClick="{() => deleteImage()}"
+    backgroundColor="{backgroundColor}"
+    icon="{faTrash}" />
 {/if}
-{#if runContainerFromImageModal}
-  <Modal
-    on:close="{() => {
-      runContainerFromImageModal = false;
-    }}">
-    <RunContainerModal
-      image="{modalImageInfo}"
-      closeCallback="{() => {
-        runContainerFromImageModal = false;
-      }}" />
-  </Modal>
-{/if}
+<ListItemButtonIcon
+  title="Show History"
+  onClick="{() => showLayersImage()}"
+  backgroundColor="{backgroundColor}"
+  icon="{faLayerGroup}" />
 
 {#if errorMessage}
-  <div class="modal fixed w-full h-full top-0 left-0 flex items-center justify-center p-8 lg:p-0" tabindex="{0}">
+  <div class="modal fixed w-full h-full top-0 left-0 flex items-center justify-center p-8 lg:p-0 z-50" tabindex="{0}">
     <div class="pf-c-alert pf-m-danger pf-m-inline" aria-label="Success alert">
       <div class="pf-c-alert__icon">
         <i class="fas fa-fw fa-exclamation-circle" aria-hidden="true"></i>

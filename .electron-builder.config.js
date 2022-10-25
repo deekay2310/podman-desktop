@@ -16,6 +16,9 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
+const exec = require('child_process').exec;
+const Arch = require('builder-util').Arch;
+
 if (process.env.VITE_APP_VERSION === undefined) {
   const now = new Date();
   process.env.VITE_APP_VERSION = `${now.getUTCFullYear() - 2000}.${now.getUTCMonth() + 1}.${now.getUTCDate()}-${
@@ -29,13 +32,36 @@ if (process.env.VITE_APP_VERSION === undefined) {
  */
 const config = {
   productName: 'Podman Desktop',
-  appId: 'com.github.containers.desktop',
+  appId: 'io.podman_desktop.PodmanDesktop',
   directories: {
     output: 'dist',
     buildResources: 'buildResources',
   },
+  buildDependenciesFromSource: false,
+  npmRebuild: false,
+  beforePack: async (context) => {
+    context.packager.config.extraResources = ['packages/main/src/assets/**'];
+
+    // universal build, add both pkg files
+    // this is hack to avoid issue https://github.com/electron/universal/issues/36
+    if(context.appOutDir.endsWith('mac-universal--x64') || context.appOutDir.endsWith('mac-universal--arm64')){
+      context.packager.config.extraResources.push('extensions/podman/assets/**');
+      return;
+    }
+
+    if(context.arch === Arch.arm64 && context.electronPlatformName === 'darwin'){
+      context.packager.config.extraResources.push('extensions/podman/assets/podman-installer-macos-aarch64-*.pkg');
+    }
+
+    if(context.arch === Arch.x64 && context.electronPlatformName === 'darwin'){
+      context.packager.config.extraResources.push('extensions/podman/assets/podman-installer-macos-amd64-*.pkg');
+    }
+
+    if(context.arch === Arch.x64 && context.electronPlatformName === 'win32'){
+      context.packager.config.extraResources.push('extensions/podman/assets/**');
+    }
+  },
   files: ['packages/**/dist/**', 'extensions/**/builtin/*.cdix/**'],
-  extraResources: ['packages/main/src/assets/**', 'extensions/podman/builtin/podman.cdix/assets/**'],
   portable: {
     artifactName: 'podman-desktop-${version}.${ext}',
   },
@@ -44,6 +70,7 @@ const config = {
   },
   win: {
     target: ['portable', 'nsis'],
+    sign: configuration => azureCodeSign(configuration.path),
   },
   flatpak: {
     license: 'LICENSE',
@@ -64,10 +91,14 @@ const config = {
       // System notifications with libnotify
       '--talk-name=org.freedesktop.Notifications',
     ],
-    useWaylandFlags: 'true',
+    useWaylandFlags: 'false',
     artifactName: 'podman-desktop-${version}.${ext}',
     runtimeVersion: '21.08',
     branch: 'main',
+    files: [
+      ['.flatpak-appdata.xml', '/share/metainfo/io.podman_desktop.PodmanDesktop.metainfo.xml'],
+      ['buildResources/icon-512x512.png', '/share/icons/hicolor/512x512/apps/io.podman_desktop.PodmanDesktop.png'],
+    ],
   },
   linux: {
     icon: './buildResources/icon-512x512.png',
@@ -101,6 +132,47 @@ const config = {
   /*extraMetadata: {
     version: process.env.VITE_APP_VERSION,
   },*/
+};
+
+const azureCodeSign = filePath => {
+  if (!process.env.AZURE_KEY_VAULT_URL) {
+    console.log('Skipping code signing, no environment variables set for that.');
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    const {
+      AZURE_KEY_VAULT_TENANT_ID,
+      AZURE_KEY_VAULT_CLIENT_ID,
+      AZURE_KEY_VAULT_SECRET,
+      AZURE_KEY_VAULT_URL,
+      AZURE_KEY_VAULT_CERTIFICATE,
+    } = process.env;
+
+    // eslint-disable-next-line no-console
+    console.log('Signing file', filePath);
+    const command = `AzureSignTool sign -kvu ${AZURE_KEY_VAULT_URL} -kvi ${AZURE_KEY_VAULT_CLIENT_ID} -kvt ${AZURE_KEY_VAULT_TENANT_ID} -kvs ${AZURE_KEY_VAULT_SECRET} -kvc ${AZURE_KEY_VAULT_CERTIFICATE} -tr http://timestamp.digicert.com -v '${filePath}'`;
+    exec(command, { shell: 'powershell.exe' }, (e, stdout, stderr) => {
+      if (e instanceof Error) {
+        console.log(e);
+        reject(e);
+        return;
+      }
+
+      if (stderr) {
+        reject(new Error(stderr));
+        return;
+      }
+
+      if (stdout.indexOf('Signing completed successfully') > -1) {
+        // eslint-disable-next-line no-console
+        console.log(stdout);
+        resolve();
+      } else {
+        reject(new Error(stdout));
+      }
+    });
+  });
 };
 
 module.exports = config;

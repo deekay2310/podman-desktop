@@ -25,7 +25,6 @@ export async function fetchContainers() {
   containersInfos.set(result);
 }
 
-fetchContainers();
 export const containersInfos: Writable<ContainerInfo[]> = writable([]);
 
 export const searchPattern = writable('');
@@ -46,8 +45,19 @@ window.addEventListener('extension-started', () => {
 window.addEventListener('tray:update-provider', () => {
   fetchContainers();
 });
+window.addEventListener('system-ready', () => {
+  fetchContainers();
+});
 
 window.events?.receive('container-stopped-event', () => {
+  fetchContainers();
+});
+
+window.events?.receive('container-die-event', () => {
+  fetchContainers();
+});
+
+window.events?.receive('container-kill-event', () => {
   fetchContainers();
 });
 
@@ -60,5 +70,9 @@ window.events?.receive('container-removed-event', () => {
 });
 
 window.events?.receive('provider-change', () => {
+  fetchContainers();
+});
+
+window.events?.receive('pod-event', () => {
   fetchContainers();
 });

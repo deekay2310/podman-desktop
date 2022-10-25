@@ -4,29 +4,45 @@ import Link from '@docusaurus/Link';
 import BrowserOnly from '@docusaurus/BrowserOnly';
 import TailWindThemeSelector from '../components/TailWindThemeSelector';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { IconProp } from '@fortawesome/fontawesome-svg-core';
+import type { IconProp } from '@fortawesome/fontawesome-svg-core';
 import { faApple, faLinux, faWindows } from '@fortawesome/free-brands-svg-icons';
 import {
   faBeer,
   faCertificate,
   faCloudArrowDown,
   faCogs,
-  faCubes,
-  faDigging,
-  faEye,
   faGaugeHigh,
-  faListCheck,
   faPlug,
-  faPuzzlePiece,
   faRocket,
   faGears,
   faRotateRight,
   faPaste,
-  faDiagramProject
+  faDiagramProject,
 } from '@fortawesome/free-solid-svg-icons';
 import ThemedImage from '@theme/ThemedImage';
 import useBaseUrl from '@docusaurus/useBaseUrl';
+import Admonition from '@theme/Admonition';
 
+function EAP() {
+  return (
+    <div>
+      <Admonition type="info" title="We are participating in Hacktoberfest 2022!">
+        <p>
+          Do you love container tools and frontend technologies like Electron, Svelte and Tailwind CSS? Then come join
+          Podman Desktop for Hacktoberfest 2022. You can start off with some issues by clicking{' '}
+          <Link to="https://bit.ly/3rrTCEP">
+            <u>here</u>
+          </Link>
+          , but feel free to explore the{' '}
+          <Link to="https://github.com/containers/podman-desktop">
+            <u>repository</u>
+          </Link>
+          .
+        </p>
+      </Admonition>
+    </div>
+  );
+}
 
 function DownloadClientLinks() {
   let operatingSystem = '';
@@ -35,13 +51,13 @@ function DownloadClientLinks() {
 
   if (userAgent.indexOf('Windows') != -1) {
     operatingSystem = 'Windows';
-    varIcon = "faWindows";
+    varIcon = 'faWindows';
   } else if (userAgent.indexOf('Mac') != -1) {
     operatingSystem = 'macOS';
-    varIcon = "faApple";
+    varIcon = 'faApple';
   } else if (userAgent.indexOf('Linux') != -1) {
     operatingSystem = 'Linux';
-    varIcon = "faLinux";
+    varIcon = 'faLinux';
   }
 
   let mainButton;
@@ -95,14 +111,19 @@ function DownloadGenericLinks() {
 function Hero() {
   // const { siteConfig } = useDocusaurusContext();
   return (
-    <section className="text-gray-600 dark:text-gray-400 body-font">
+    <section className="text-gray-600 dark:text-gray-300 body-font">
       <div className="container mx-auto flex px-5 py-24 items-center justify-center flex-col">
         <div className="text-center lg:w-2/3 w-full">
           <h1 className="title-font sm:text-4xl text-3xl lg:text-6xl mb-4 font-medium text-gray-900 dark:text-white">
             Containers and Kubernetes for application developers
           </h1>
-          <p className="text-base text-gray-700 dark:text-gray-500 md:text-lg">
-            Podman Desktop enables you to easily work with containers from your local environment. Podman Desktop leverages <a href="https://podman.io/">Podman Engine</a> to provide a lightweight and deamon-less container tool.
+          <p className="text-base md:text-lg">
+            Podman Desktop enables you to easily work with containers from your local environment. Podman Desktop
+            leverages{' '}
+            <a href="https://podman.io/" className="text-purple-700 dark:text-purple-400" target="_blank">
+              Podman Engine
+            </a>{' '}
+            to provide a lightweight and daemon-less container tool.
           </p>
           <div className="flex justify-center">
             <iframe
@@ -114,19 +135,20 @@ function Hero() {
               title="GitHub"></iframe>
           </div>
           <div className="flex justify-center">
-          {/* With client mode, provides the link to the client browser */}
-          <BrowserOnly fallback={<DownloadGenericLinks></DownloadGenericLinks>}>
-            {() => {
-              return <DownloadClientLinks />;
-            }}
-          </BrowserOnly>
+            {/* With client mode, provides the link to the client browser */}
+            <BrowserOnly fallback={<DownloadGenericLinks></DownloadGenericLinks>}>
+              {() => {
+                return <DownloadClientLinks />;
+              }}
+            </BrowserOnly>
           </div>
-          <div className="flex justify-center">
-            <img
-              className="md:w-5/6 lg:w-11/12 w-full"
-              src="https://raw.githubusercontent.com/containers/podman-desktop/media/screenshot.png"
-            />
-          </div>
+        </div>
+        <div className="text-center w-full text-center">
+          <img
+            className="py-4 md:w-5/6 lg:w-11/12 w-full"
+            alt="Podman Desktop home page"
+            src="/img/features/homepage.png"
+          />
         </div>
       </div>
     </section>
@@ -149,7 +171,7 @@ function WorkInProgress() {
 
 function KeepUpToDate() {
   return (
-    <section className="text-gray-600 dark:text-gray-400 dark:bg-zinc-900 bg-zinc-100 body-font">
+    <section className="text-gray-600 dark:text-gray-300 dark:bg-zinc-900 bg-zinc-100 body-font">
       <div className="container px-5 py-24 mx-auto flex flex-wrap">
         <div className="flex flex-col text-center w-full mb-5">
           <SectionTitle name="update" />
@@ -165,10 +187,18 @@ function KeepUpToDate() {
             <FontAwesomeIcon size="3x" icon={faRotateRight} className="ml-2 mb-4 text-gray-800 dark:text-gray-200" />
           </div>
           <div className="flex flex-col items-center">
-            <p className="leading-relaxed">
+            <p className="leading-relaxed text-base">
               Install Podman and other dependencies directly from Podman Desktop if not yet installed.
             </p>
-            <p className="leading-relaxed">Check for updates/Notify user on Windows and macOS</p>
+            <p className="leading-relaxed text-base">Check for updates and get notified about new changes.</p>
+            <p className="leading-relaxed text-base">
+              Available on{' '}
+              <a href="/downloads/windows" className="text-purple-700 dark:text-purple-400" target="_blank">
+                Windows
+              </a>
+              !
+            </p>
+            <p className="leading-relaxed text-base">Coming soon on MacOS.</p>
           </div>
         </div>
       </div>
@@ -178,7 +208,7 @@ function KeepUpToDate() {
 
 function Extensibility() {
   return (
-    <section className="text-gray-600 dark:text-gray-400 dark:bg-zinc-800 bg-zinc-200 body-font">
+    <section className="text-gray-600 dark:text-gray-300 dark:bg-zinc-800 bg-zinc-200 body-font">
       <div className="container px-5 py-24 mx-auto flex flex-wrap">
         <div className="flex flex-col text-center w-full mb-5">
           <SectionTitle name="extensibility" />
@@ -191,22 +221,30 @@ function Extensibility() {
         <div className="flex flex-col w-full text-center">
           <div className="mx-10">
             <FontAwesomeIcon size="3x" icon={faPlug} className="ml-2 mb-4 text-gray-800 dark:text-gray-200" />
-          </div>          
-          
-          <p className="leading-relaxed">Container engines are plugged through extension points.</p>
-          <p className="leading-relaxed">JavaScript extensions can contribute new behaviour</p>
-          <p className="leading-relaxed">Reuse existing extensions directly in Podman Desktop</p>
+          </div>
+
+          <ul className="list-disc list-inside text-center">
+            <li>Container engines are plugged through extension points</li>
+            <li>JavaScript extensions can contribute new behaviour</li>
+            <li>Reuse existing extensions directly in Podman Desktop</li>
+          </ul>
 
           <div className="flex flex-col items-center">
             <div className="text-left my-4">
-              <p className="-ml-5">Current Podman Desktop plug-ins: Podman, Docker, Lima and CRC/OpenShift Local.</p>
+              <p className="-ml-5 text-base">
+                Current Podman Desktop plug-ins: Podman, Docker, Lima and CRC/OpenShift Local.
+              </p>
             </div>
           </div>
 
-          <ThemedImage className="py-4 md:w-5/6 lg:w-11/12 w-full" alt="Reuse Docker Desktop extensions" sources={{
+          <ThemedImage
+            className="py-4 md:w-5/6 lg:w-11/12 w-full"
+            alt="Reuse Docker Desktop extensions"
+            sources={{
               light: useBaseUrl('img/ddextensions/dd-support.png'),
               dark: useBaseUrl('img/ddextensions/dd-support.png'),
-            }} />
+            }}
+          />
 
           <div className="flex flex-col items-center">
             <Link
@@ -236,7 +274,7 @@ function Extensibility() {
 
 function Configure() {
   return (
-    <section className="text-gray-600 dark:text-gray-400 dark:bg-zinc-900 bg-zinc-100 body-font py-24">
+    <section className="text-gray-600 dark:text-gray-300 dark:bg-zinc-900 bg-zinc-100 body-font py-24">
       <div className="container px-5 mx-auto flex flex-wrap">
         <div className="flex flex-col text-center w-full mb-5">
           <SectionTitle name="Configure" />
@@ -245,7 +283,6 @@ function Configure() {
             Multiple configuration options
           </h2>
         </div>
-
 
         <div className="container px-5 pb-5 mx-auto">
           <div className="flex flex-wrap sm:-m-4 -mx-4 -mb-10 -mt-4 md:space-y-0 space-y-6">
@@ -259,7 +296,6 @@ function Configure() {
               </div>
             </div>
 
-            
             <div className="p-4 md:w-1/4 flex">
               <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-400 text-purple-800 mb-4 flex-shrink-0">
                 <FontAwesomeIcon size="2x" icon={faCogs} className="w-6 h-6 " />
@@ -275,8 +311,12 @@ function Configure() {
                 <FontAwesomeIcon size="2x" icon={faCogs} className="w-6 h-6 " />
               </div>
               <div className="flex-grow pl-6">
-                <h2 className="text-gray-900 dark:text-gray-100 text-lg title-font font-medium mb-2">Resources Utilization</h2>
-                <p className="leading-relaxed text-base">Configure CPU/Memory/Disk of Podman machines (work in progress)</p>
+                <h2 className="text-gray-900 dark:text-gray-100 text-lg title-font font-medium mb-2">
+                  Resources Utilization
+                </h2>
+                <p className="leading-relaxed text-base">
+                  Configure CPU/Memory/Disk of Podman machines (work in progress)
+                </p>
               </div>
             </div>
 
@@ -285,12 +325,16 @@ function Configure() {
                 <FontAwesomeIcon size="2x" icon={faCogs} className="w-6 h-6 " />
               </div>
               <div className="flex-grow pl-6">
-                <h2 className="text-gray-900 dark:text-gray-100 text-lg title-font font-medium mb-2">Container Engines</h2>
-                <p className="leading-relaxed text-base">Handle multiple container engines at the same time (Podman, Docker, Lima...).</p>
+                <h2 className="text-gray-900 dark:text-gray-100 text-lg title-font font-medium mb-2">
+                  Container Engines
+                </h2>
+                <p className="leading-relaxed text-base">
+                  Handle multiple container engines at the same time (Podman, Docker, Lima...).
+                </p>
               </div>
             </div>
           </div>
-          </div>
+        </div>
       </div>
     </section>
   );
@@ -298,7 +342,7 @@ function Configure() {
 
 function EnterpriseReady() {
   return (
-    <section className="text-gray-600 dark:text-gray-400 dark:bg-zinc-800 bg-zinc-200 body-font py-24">
+    <section className="text-gray-600 dark:text-gray-300 dark:bg-zinc-800 bg-zinc-200 body-font py-24">
       <div className="container px-5 mx-auto flex flex-wrap">
         <div className="flex flex-col text-center w-full mb-5">
           <SectionTitle name="enterprise" />
@@ -321,7 +365,7 @@ function EnterpriseReady() {
                 <h2 className="text-gray-900 dark:text-gray-100 text-lg title-font font-medium mb-2">Code signing</h2>
 
                 <p className="leading-relaxed text-base">
-                  macOS binaries are digitally signed (Windows certification is in)
+                  Digitally signed binaries available across all leading Operating Systems
                 </p>
               </div>
             </div>
@@ -352,25 +396,25 @@ function EnterpriseReady() {
   );
 }
 
-const copyBrewInstructions = () =>{
+const copyBrewInstructions = () => {
   navigator.clipboard.writeText('brew install podman-desktop');
 };
 
 function RunAnywhere() {
   return (
-    <section className="text-gray-600 dark:text-gray-400 dark:bg-zinc-900 bg-zinc-100 body-font">
+    <section className="text-gray-600 dark:text-gray-300 dark:bg-zinc-800 bg-zinc-200 body-font">
       <div className="container px-5 py-24 mx-auto flex flex-wrap">
         <div className="flex flex-col text-center w-full mb-5">
           <h2 className="max-w-lg mb-6 font-sans text-3xl font-bold leading-none tracking-tight text-gray-900 dark:text-white sm:text-4xl md:mx-auto">
             Available on Windows, Mac and Linux
           </h2>
-          <p className="text-base text-gray-700 dark:text-gray-500 md:text-lg">
+          <p className="text-base text-gray-700 md:text-lg dark:text-gray-300">
             Use the same UI across different operating systems
           </p>
         </div>
         <div className="flex flex-wrap w-full">
           <div className="p-4 w-11/12 md:w-1/2 lg:w-1/3">
-            <div className="flex rounded-lg h-full bg-zinc-300 dark:bg-zinc-700 bg-opacity-60 p-8 flex-col">
+            <div className="flex rounded-lg h-full bg-zinc-100 dark:bg-zinc-900 bg-opacity-60 p-8 flex-col">
               <Link
                 title="Download for Windows"
                 className="no-underline hover:no-underline text-gray-900 dark:text-white hover:dark:text-violet-600 "
@@ -389,7 +433,7 @@ function RunAnywhere() {
             </div>
           </div>
           <div className="p-4 w-11/12 md:w-1/2 lg:w-1/3">
-            <div className="flex rounded-lg h-full bg-zinc-300 dark:bg-zinc-700 bg-opacity-60 p-8 flex-col">
+            <div className="flex rounded-lg h-full bg-zinc-100 dark:bg-zinc-900 bg-opacity-60 p-8 flex-col">
               <Link
                 title="Download for macOS"
                 className="no-underline hover:no-underline text-gray-900 dark:text-white hover:dark:text-violet-600 "
@@ -404,15 +448,20 @@ function RunAnywhere() {
                 <p className="text-base text-center">arm64, x64 or unified dmg</p>
                 <p className="text-base text-center">
                   <FontAwesomeIcon size="1x" icon={faBeer} className="ml-2" /> brew install podman-desktop
-                  <button title="Copy To Clipboard" className="mr-5"> 
-                    <FontAwesomeIcon size="1x" icon={faPaste} className="ml-3  cursor-pointer text-3xl  text-white-500" onClick={() => copyBrewInstructions()} />
+                  <button title="Copy To Clipboard" className="mr-5">
+                    <FontAwesomeIcon
+                      size="1x"
+                      icon={faPaste}
+                      className="ml-3  cursor-pointer text-3xl  text-white-500"
+                      onClick={() => copyBrewInstructions()}
+                    />
                   </button>
                 </p>
               </div>
             </div>
           </div>
           <div className="p-4 w-11/12 md:w-1/2 lg:w-1/3">
-            <div className="flex rounded-lg h-full bg-zinc-300 dark:bg-zinc-700 bg-opacity-60 p-8 flex-col">
+            <div className="flex rounded-lg h-full bg-zinc-100 dark:bg-zinc-900 bg-opacity-60 p-8 flex-col">
               <Link
                 title="Download for Linux"
                 className="no-underline hover:no-underline text-gray-900 dark:text-white hover:dark:text-violet-600 "
@@ -437,7 +486,7 @@ function RunAnywhere() {
 
 function MainFeatures() {
   return (
-    <section className="text-gray-600 dark:text-gray-400 dark:bg-zinc-800 bg-zinc-200 body-font py-24">
+    <section className="text-gray-600 dark:text-gray-300 dark:bg-zinc-900 bg-zinc-100 body-font py-24">
       <div className="container px-5 mx-auto flex flex-wrap">
         <div className="flex flex-col text-center w-full mb-5">
           <SectionTitle name="features" />
@@ -474,10 +523,6 @@ function MainFeatures() {
                 <p className="leading-relaxed text-base list-disc">
                   <FontAwesomeIcon icon={faGaugeHigh} className="text-purple-800 w-3 h-3 mt-1 mr-2" />
                   Start / Stop / Restart containers
-                </p>
-                <p className="leading-relaxed text-base list-disc">
-                  <FontAwesomeIcon icon={faRocket} className="text-purple-800 w-3 h-3 mt-1 mr-2" />
-                  Start / Stop / Restart pods
                 </p>
               </div>
             </div>
@@ -542,14 +587,101 @@ function MainFeatures() {
   );
 }
 
-export default function Home(): JSX.Element {
-  
+function Pods() {
   return (
-    <Layout title="Leverage Podman with a Desktop App" description="Containers and Kubernetes for application developers">
+    <section className="text-gray-600 dark:text-gray-300 dark:bg-zinc-800 bg-zinc-200 body-font py-24">
+      <div className="container px-5 mx-auto flex flex-wrap">
+        <div className="flex flex-col text-center w-full mb-5">
+          <SectionTitle name="features" />
+
+          <h2 className="max-w-lg mb-6 font-sans text-3xl font-bold leading-none tracking-tight text-gray-900 dark:text-white sm:text-4xl md:mx-auto">
+            Work with Pods
+          </h2>
+        </div>
+        <div className="container px-5 pb-5 mx-auto">
+          <div className="flex flex-wrap sm:-m-4 -mx-4 -mb-10 -mt-4 md:space-y-0 space-y-6">
+            <div className="p-4 md:w-1/2 flex">
+              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-400 text-purple-800 mb-4 flex-shrink-0">
+                <FontAwesomeIcon size="2x" icon={faGears} className="w-6 h-6 " />
+              </div>
+              <div className="flex-grow pl-6">
+                <h2 className="text-gray-900 dark:text-gray-100 text-lg title-font font-medium mb-2">
+                  Create & Select
+                </h2>
+                <p className="leading-relaxed text-base list-disc">
+                  <FontAwesomeIcon icon={faGaugeHigh} className="text-purple-800 w-3 h-3 mt-1 mr-2" />
+                  Create and Start Pods with Podman Desktop
+                </p>
+                <p className="leading-relaxed text-base list-disc">
+                  <FontAwesomeIcon icon={faDiagramProject} className="text-purple-800 w-3 h-3 mt-1 mr-2" />
+                  Select Containers to run as Pods
+                </p>
+                <p className="leading-relaxed text-base list-disc">
+                  <FontAwesomeIcon icon={faRocket} className="text-purple-800 w-3 h-3 mt-1 mr-2" />
+                  Start / Stop / Restart Pods
+                </p>
+              </div>
+            </div>
+            <div className="p-4 md:w-1/2 flex">
+              <div className="w-12 h-12 inline-flex items-center justify-center rounded-full bg-gray-400 text-purple-900 mb-4 flex-shrink-0">
+                <FontAwesomeIcon size="2x" icon={faGaugeHigh} className="w-6 h-6 " />
+              </div>
+              <div className="flex-grow pl-6">
+                <h2 className="text-gray-900 dark:text-gray-100 text-lg title-font font-medium mb-2">Kubernetes</h2>
+                <p className="leading-relaxed text-base list-disc">
+                  <FontAwesomeIcon icon={faRocket} className="text-purple-800 w-3 h-3 mt-1 mr-2" />
+                  Play Kubernetes YAML locally without Kubernetes
+                </p>
+                <p className="leading-relaxed text-base list-disc">
+                  <FontAwesomeIcon icon={faRocket} className="text-purple-800 w-3 h-3 mt-1 mr-2" />
+                  Generate Kubernetes YAML from Pods
+                </p>
+                <p className="leading-relaxed text-base list-disc">
+                  <FontAwesomeIcon icon={faRocket} className="text-purple-800 w-3 h-3 mt-1 mr-2" />
+                  Leverage existing remote Kubernetes clusters
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="container px-5 mx-auto flex flex-wrap">
+        <div className="flex flex-col text-center w-full mb-5">
+          <Link
+            title="Discover More"
+            className="no-underline hover:no-underline text-gray-900 dark:text-white hover:dark:text-violet-600 "
+            to="/features">
+            <div className="mt-3 text-purple-900 dark:text-purple-400 inline-flex items-center">
+              Discover More
+              <svg
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                className="w-4 h-4 ml-2"
+                viewBox="0 0 24 24">
+                <path d="M5 12h14M12 5l7 7-7 7"></path>
+              </svg>
+            </div>
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export default function Home(): JSX.Element {
+  return (
+    <Layout
+      title="Leverage Podman with a Desktop App"
+      description="Containers and Kubernetes for application developers">
       <TailWindThemeSelector />
+      <EAP />
       <Hero />
       <RunAnywhere />
       <MainFeatures />
+      <Pods />
       <Configure />
       <Extensibility />
       <KeepUpToDate />

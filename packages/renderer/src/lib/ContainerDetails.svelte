@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { ContainerInfoUI } from './container/ContainerInfoUI';
+import { ContainerGroupInfoTypeUI, ContainerInfoUI } from './container/ContainerInfoUI';
 import { Route } from 'tinro';
 import ContainerIcon from './ContainerIcon.svelte';
 import 'xterm/css/xterm.css';
@@ -9,6 +9,10 @@ import ContainerActions from './container/ContainerActions.svelte';
 import { onMount } from 'svelte';
 import { containersInfos } from '../stores/containers';
 import { ContainerUtils } from './container/container-utils';
+import ContainerDetailsInspect from './ContainerDetailsInspect.svelte';
+import { getPanelDetailColor } from './color/color';
+import ContainerDetailsKube from './ContainerDetailsKube.svelte';
+import ContainerStatistics from './container/ContainerStatistics.svelte';
 
 export let containerID: string;
 
@@ -57,17 +61,31 @@ onMount(() => {
                         <span class="pf-c-tabs__item-text">Logs</span>
                       </a>
                     </li>
-                    <!--
-                <li class="pf-c-tabs__item" class:pf-m-current="{meta.url === '/containers/inspect'}">
-                  <a
-                    href="/containers/inspect"
-                    class="pf-c-tabs__link"
-                    aria-controls="open-tabs-example-tabs-list-yaml-panel"
-                    id="open-tabs-example-tabs-list-yaml-link">
-                    <span class="pf-c-tabs__item-text">Inspect</span>
-                  </a>
-                </li>
-                -->
+
+                    <li
+                      class="pf-c-tabs__item"
+                      class:pf-m-current="{meta.url === `/containers/${container.id}/inspect`}">
+                      <a
+                        href="/containers/{container.id}/inspect"
+                        class="pf-c-tabs__link"
+                        aria-controls="open-tabs-example-tabs-list-yaml-panel"
+                        id="open-tabs-example-tabs-list-yaml-link">
+                        <span class="pf-c-tabs__item-text">Inspect</span>
+                      </a>
+                    </li>
+                    {#if container.engineType === 'podman' && container.groupInfo.type === ContainerGroupInfoTypeUI.STANDALONE}
+                      <li
+                        class="pf-c-tabs__item"
+                        class:pf-m-current="{meta.url === `/containers/${container.id}/kube`}">
+                        <a
+                          href="/containers/{container.id}/kube"
+                          class="pf-c-tabs__link"
+                          aria-controls="open-tabs-example-tabs-list-yaml-panel"
+                          id="open-tabs-example-tabs-list-yaml-link">
+                          <span class="pf-c-tabs__item-text">Kube</span>
+                        </a>
+                      </li>
+                    {/if}
                     <li
                       class="pf-c-tabs__item"
                       class:pf-m-current="{meta.url === `/containers/${container.id}/terminal`}">
@@ -95,9 +113,12 @@ onMount(() => {
               </div>
             </section>
           </div>
-          <div class="flex flex-row-reverse w-full  px-5 pt-5">
-            <div class="flex h-10">
+          <div class="flex flex-col w-full px-5 pt-5">
+            <div class="flex h-10 justify-end">
               <ContainerActions container="{container}" backgroundColor="bg-neutral-900" />
+            </div>
+            <div class="flex my-2 w-full justify-end ">
+              <ContainerStatistics container="{container}" />
             </div>
           </div>
           <a href="/containers" title="Close Details" class="mt-2 mr-2 text-gray-500"
@@ -106,10 +127,15 @@ onMount(() => {
         <Route path="/logs">
           <ContainerDetailsLogs container="{container}" />
         </Route>
-        <Route path="/inspect">Inspect</Route>
+        <Route path="/inspect">
+          <ContainerDetailsInspect container="{container}" />
+        </Route>
+        <Route path="/kube">
+          <ContainerDetailsKube container="{container}" />
+        </Route>
         <Route path="/details">
-          <div class="flex py-4">
-            <table class="divide-y divide-gray-800 h-2">
+          <div class="flex py-4 h-full" style="background-color: {getPanelDetailColor()}">
+            <table class="h-2 font-thin text-xs">
               <tr>
                 <td class="px-2">Id</td>
                 <td class="px-2 font-thin text-xs">{container.shortId}</td>

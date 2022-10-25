@@ -8,17 +8,35 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Apply default style for markdown
-*/
-h1 {
-  @apply text-4xl font-bold;
+/* montserrat-regular - latin */
+@font-face {
+  font-family: 'Montserrat';
+  font-style: normal;
+  font-weight: normal;
+  src: url('../../static/fonts/montserrat-v25-latin-regular.woff2') format('woff2'),
+    url('../../static/fonts/montserrat-v25-latin-regular.woff') format('woff'),
+    url('../../static/fonts/montserrat-v25-latin-regular.ttf') format('truetype');
 }
-h2 {
-  @apply text-2xl font-bold;
+
+/* Apply default style for markdown*/
+@layer base {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-size: revert;
+    font-weight: revert;
+  }
+  ol,
+  ul {
+    list-style: revert;
+    margin: revert;
+    padding: revert;
+  }
 }
-h3 {
-  @apply text-xl font-bold;
-}
+
 /*
 Apply style on documentation
 */
@@ -30,9 +48,9 @@ Apply style on documentation
   @apply text-purple-700;
 }
 
-
 /* You can override the default Infima variables here. */
 :root {
+  --ifm-font-family-base: 'Montserrat', sans-serif;
   --ifm-color-primary: #6d28d9;
   --ifm-color-primary-dark: #7c3aed;
   --ifm-color-primary-darker: #5c21ba;

@@ -21,6 +21,14 @@ import type Dockerode from 'dockerode';
 export interface ContainerInfo extends Dockerode.ContainerInfo {
   engineId: string;
   engineName: string;
+  engineType: 'podman' | 'docker';
+  StartedAt: string;
+  pod?: {
+    id: string;
+    name: string;
+    status: string;
+    engineId: string;
+  };
 }
 
 export interface HostConfig {

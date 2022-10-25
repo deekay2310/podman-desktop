@@ -177,15 +177,19 @@ export class DockerDesktopInstallation {
         reportLog(`Pulling image ${imageName}...`);
 
         await this.containerRegistry.pullImage(providerConnectionInfo, imageName, (pullEvent: PullEvent) => {
-          if (pullEvent.progress) {
-            reportLog(pullEvent.progress);
+          if (pullEvent.progress || pullEvent.progressDetail) {
+            console.log(pullEvent.progress);
+          } else if (pullEvent.status) {
+            reportLog(pullEvent.status);
           }
         });
 
         // ok search the image
         const images = await providerConnection.listImages();
         // const foundMatchingImage = images.find(image => image.RepoTags?.find(tag => tag.includes('aquasec/trivy-docker-extension:0.4.3')));
-        const foundMatchingImage = images.find(image => image.RepoTags?.find(tag => tag.includes(imageName)));
+        const foundMatchingImage = images.find(image =>
+          image.RepoTags?.find(tag => tag.includes(imageName) || imageName.includes(tag)),
+        );
 
         if (!foundMatchingImage) {
           reportLog('not able to get pulled image');
@@ -263,6 +267,15 @@ export class DockerDesktopInstallation {
         event.reply('docker-desktop-plugin:install-log', logCallbackId, 'Filtering image content...');
 
         await this.extractDockerDesktopFiles(tmpFolderPath, finalFolderPath, reportLog);
+
+        // check metadata. If name is missing, add the one from the image
+        const metadata = await this.contributionManager.loadMetadata(finalFolderPath);
+        if (!metadata.name) {
+          // need to add the title from the image
+          metadata.name = titleLabel;
+          await this.contributionManager.saveMetadata(finalFolderPath, metadata);
+        }
+
         event.reply('docker-desktop-plugin:install-end', logCallbackId, 'Extension Successfully installed.');
         // refresh contributions
         await this.contributionManager.init();

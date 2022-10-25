@@ -19,22 +19,38 @@
 import type * as containerDesktopAPI from '@tmpwip/extension-api';
 import { Disposable } from './types/disposable';
 import Dockerode from 'dockerode';
+import StreamValues from 'stream-json/streamers/StreamValues';
 import type { ContainerCreateOptions, ContainerInfo } from './api/container-info';
 import type { ImageInfo } from './api/image-info';
+import type { PodInfo, PodInspectInfo } from './api/pod-info';
 import type { ImageInspectInfo } from './api/image-inspect-info';
 import type { ProviderContainerConnectionInfo } from './api/provider-info';
 import type { ImageRegistry } from './image-registry';
 import type { PullEvent } from './api/pull-event';
 import type { Telemetry } from './telemetry/telemetry';
-
+import * as crypto from 'node:crypto';
+import moment from 'moment';
 const tar: { pack: (dir: string) => NodeJS.ReadableStream } = require('tar-fs');
-
+import { EventEmitter } from 'node:events';
+import type { ContainerInspectInfo } from './api/container-inspect-info';
+import type { HistoryInfo } from './api/history-info';
+import type {
+  LibPod,
+  PlayKubeInfo,
+  PodCreateOptions,
+  ContainerCreateOptions as PodmanContainerCreateOptions,
+  PodInfo as LibpodPodInfo,
+} from './dockerode/libpod-dockerode';
+import { LibpodDockerode } from './dockerode/libpod-dockerode';
+import type { ContainerStatsInfo } from './api/container-stats-info';
+import type { VolumeInfo, VolumeInspectInfo, VolumeListInfo } from './api/volume-info';
 export interface InternalContainerProvider {
   name: string;
   id: string;
   connection: containerDesktopAPI.ContainerProviderConnection;
   // api not there if status is stopped
   api?: Dockerode;
+  libpodApi?: LibPod;
 }
 
 export interface InternalContainerProviderLifecycle {
@@ -42,53 +58,82 @@ export interface InternalContainerProviderLifecycle {
   status: string;
 }
 
+interface JSONEvent {
+  type: string;
+  status: string;
+  id: string;
+  Type?: string;
+}
+
 export class ContainerProviderRegistry {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(private apiSender: any, private imageRegistry: ImageRegistry, private telemetryService: Telemetry) {}
+  constructor(private apiSender: any, private imageRegistry: ImageRegistry, private telemetryService: Telemetry) {
+    const libPodDockerode = new LibpodDockerode();
+    libPodDockerode.enhancePrototypeWithLibPod();
+  }
 
   private containerProviders: Map<string, containerDesktopAPI.ContainerProviderConnection> = new Map();
   private internalProviders: Map<string, InternalContainerProvider> = new Map();
 
   handleEvents(api: Dockerode) {
+    const eventEmitter = new EventEmitter();
+
+    eventEmitter.on('event', (jsonEvent: JSONEvent) => {
+      console.log('event is', jsonEvent);
+      if (jsonEvent.status === 'stop' && jsonEvent?.Type === 'container') {
+        // need to notify that a container has been stopped
+        this.apiSender.send('container-stopped-event', jsonEvent.id);
+      } else if (jsonEvent.status === 'init' && jsonEvent?.Type === 'container') {
+        // need to notify that a container has been started
+        this.apiSender.send('container-init-event', jsonEvent.id);
+      } else if (jsonEvent.status === 'start' && jsonEvent?.Type === 'container') {
+        // need to notify that a container has been started
+        this.apiSender.send('container-started-event', jsonEvent.id);
+      } else if (jsonEvent.status === 'destroy' && jsonEvent?.Type === 'container') {
+        // need to notify that a container has been destroyed
+        this.apiSender.send('container-stopped-event', jsonEvent.id);
+      } else if (jsonEvent.status === 'die' && jsonEvent?.Type === 'container') {
+        this.apiSender.send('container-die-event', jsonEvent.id);
+      } else if (jsonEvent.status === 'kill' && jsonEvent?.Type === 'container') {
+        this.apiSender.send('container-kill-event', jsonEvent.id);
+      } else if (jsonEvent?.Type === 'pod') {
+        this.apiSender.send('pod-event');
+      } else if (jsonEvent?.Type === 'volume') {
+        this.apiSender.send('volume-event');
+      } else if (jsonEvent.status === 'remove' && jsonEvent?.Type === 'container') {
+        this.apiSender.send('container-removed-event', jsonEvent.id);
+      } else if (jsonEvent.status === 'pull' && jsonEvent?.Type === 'image') {
+        // need to notify that image are being pulled
+        this.apiSender.send('image-pull-event', jsonEvent.id);
+      } else if (jsonEvent.status === 'tag' && jsonEvent?.Type === 'image') {
+        // need to notify that image are being tagged
+        this.apiSender.send('image-tag-event', jsonEvent.id);
+      } else if (jsonEvent.status === 'untag' && jsonEvent?.Type === 'image') {
+        // need to notify that image are being untagged
+        this.apiSender.send('image-untag-event', jsonEvent.id);
+      } else if (jsonEvent.status === 'remove' && jsonEvent?.Type === 'image') {
+        // need to notify that image are being pulled
+        this.apiSender.send('image-remove-event', jsonEvent.id);
+      } else if (jsonEvent.status === 'delete' && jsonEvent?.Type === 'image') {
+        // need to notify that image are being pulled
+        this.apiSender.send('image-remove-event', jsonEvent.id);
+      } else if (jsonEvent.status === 'build' && jsonEvent?.Type === 'image') {
+        // need to notify that image are being pulled
+        this.apiSender.send('image-build-event', jsonEvent.id);
+      }
+    });
+
     api.getEvents((err, stream) => {
       if (err) {
         console.log('error is', err);
       }
-      stream?.on('data', data => {
-        let evt;
-        try {
-          evt = JSON.parse(data.toString());
-        } catch (err) {
-          console.error(data.toString(), err);
-          return;
-        }
-        console.log('event is', evt);
-        if (evt.status === 'stop') {
-          // need to notify that a container has been stopped
-          this.apiSender.send('container-stopped-event', evt.id);
-        } else if (evt.status === 'start') {
-          // need to notify that a container has been started
-          this.apiSender.send('container-started-event', evt.id);
-        } else if (evt.status === 'destroy') {
-          // need to notify that a container has been destroyed
-          this.apiSender.send('container-stopped-event', evt.id);
-        } else if (evt.status === 'remove' && evt?.Type === 'container') {
-          this.apiSender.send('container-removed-event', evt.id);
-        } else if (evt.status === 'pull' && evt?.Type === 'image') {
-          // need to notify that image are being pulled
-          this.apiSender.send('image-pull-event', evt.id);
-        } else if (evt.status === 'tag' && evt?.Type === 'image') {
-          // need to notify that image are being tagged
-          this.apiSender.send('image-tag-event', evt.id);
-        } else if (evt.status === 'untag' && evt?.Type === 'image') {
-          // need to notify that image are being untagged
-          this.apiSender.send('image-untag-event', evt.id);
-        } else if (evt.status === 'remove' && evt?.Type === 'image') {
-          // need to notify that image are being pulled
-          this.apiSender.send('image-remove-event', evt.id);
-        } else if (evt.status === 'build' && evt?.Type === 'image') {
-          // need to notify that image are being pulled
-          this.apiSender.send('image-build-event', evt.id);
+      const pipeline = stream?.pipe(StreamValues.withParser());
+      pipeline?.on('error', error => {
+        console.error('Error while parsing events', error);
+      });
+      pipeline?.on('data', data => {
+        if (data?.value !== undefined) {
+          eventEmitter.emit('event', data.value);
         }
       });
     });
@@ -116,6 +161,9 @@ export class ContainerProviderRegistry {
 
     if (containerProviderConnection.status() === 'started') {
       internalProvider.api = new Dockerode({ socketPath: containerProviderConnection.endpoint.socketPath });
+      if (containerProviderConnection.type === 'podman') {
+        internalProvider.libpodApi = internalProvider.api as unknown as LibPod;
+      }
       this.handleEvents(internalProvider.api);
     }
 
@@ -125,10 +173,14 @@ export class ContainerProviderRegistry {
       if (newStatus !== previousStatus) {
         if (newStatus === 'stopped') {
           internalProvider.api = undefined;
+          internalProvider.libpodApi = undefined;
           this.apiSender.send('provider-change', {});
         }
         if (newStatus === 'started') {
           internalProvider.api = new Dockerode({ socketPath: containerProviderConnection.endpoint.socketPath });
+          if (containerProviderConnection.type === 'podman') {
+            internalProvider.libpodApi = internalProvider.api as unknown as LibPod;
+          }
           this.handleEvents(internalProvider.api);
           this.internalProviders.set(id, internalProvider);
           this.apiSender.send('provider-change', {});
@@ -154,14 +206,71 @@ export class ContainerProviderRegistry {
     const containers = await Promise.all(
       Array.from(this.internalProviders.values()).map(async provider => {
         try {
-          if (!provider.api) {
+          const providerApi = provider.api;
+          if (!providerApi) {
             return [];
           }
-          const containers = await provider.api.listContainers({ all: true });
-          return containers.map(container => {
-            const containerInfo: ContainerInfo = { ...container, engineName: provider.name, engineId: provider.id };
-            return containerInfo;
-          });
+
+          // grab time from the provider
+          const providerInfo = await providerApi.info();
+          // Current system-time in RFC 3339 format with nano-seconds.
+          const vmTime = providerInfo.SystemTime;
+
+          // we can't trust the time from the VM, so need to compute delta
+          // between our time and the VM time
+          // https://github.com/containers/podman/issues/11541
+          const delta = moment().diff(vmTime);
+
+          let pods: LibpodPodInfo[] = [];
+          if (provider.libpodApi) {
+            pods = await provider.libpodApi.listPods();
+          }
+
+          const containers = await providerApi.listContainers({ all: true });
+          return Promise.all(
+            containers.map(async container => {
+              let StartedAt;
+              if (container.State.toUpperCase() === 'RUNNING') {
+                // grab additional field like StartedAt
+                try {
+                  const containerData = providerApi.getContainer(container.Id);
+                  const containerInspect = await containerData.inspect();
+                  // needs to adjust
+                  const correctedDate = moment(containerInspect.State.StartedAt)
+                    .add(delta, 'milliseconds')
+                    .toISOString();
+                  StartedAt = correctedDate;
+                } catch (error) {
+                  console.debug('Unable to get container, probably container is gone due to a short TTL', error);
+                  StartedAt = '';
+                }
+              } else {
+                StartedAt = '';
+              }
+
+              // do we have a matching pod for this container ?
+              let pod;
+              const matchingPod = pods.find(pod =>
+                pod.Containers.find(containerOfPod => containerOfPod.Id === container.Id),
+              );
+              if (matchingPod) {
+                pod = {
+                  id: matchingPod.Id,
+                  name: matchingPod.Name,
+                  status: matchingPod.Status,
+                };
+              }
+              const containerInfo: ContainerInfo = {
+                ...container,
+                pod,
+                engineName: provider.name,
+                engineId: provider.id,
+                engineType: provider.connection.type,
+                StartedAt,
+              };
+              return containerInfo;
+            }),
+          );
         } catch (error) {
           console.log('error in engine', provider.name, error);
           return [];
@@ -197,16 +306,138 @@ export class ContainerProviderRegistry {
     return flatttenedImages;
   }
 
+  async listPods(): Promise<PodInfo[]> {
+    const pods = await Promise.all(
+      Array.from(this.internalProviders.values()).map(async provider => {
+        try {
+          if (!provider.libpodApi) {
+            return [];
+          }
+          const pods = await provider.libpodApi.listPods();
+          return pods.map(pod => {
+            const podInfo: PodInfo = { ...pod, engineName: provider.name, engineId: provider.id };
+            return podInfo;
+          });
+        } catch (error) {
+          console.log('error in engine', provider.name, error);
+          return [];
+        }
+      }),
+    );
+    const flatttenedPods = pods.flat();
+    this.telemetryService.track('listPods', { total: flatttenedPods.length });
+
+    return flatttenedPods;
+  }
+
+  async listVolumes(): Promise<VolumeListInfo[]> {
+    const volumes = await Promise.all(
+      Array.from(this.internalProviders.values()).map(async provider => {
+        try {
+          if (!provider.api) {
+            return [];
+          }
+
+          // grab the storage information
+          const storageDefinition = await provider.api.df();
+
+          // grab containers
+          const containers = await provider.api.listContainers({ all: true });
+
+          // any as there is a CreatedAt field missing in the type
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const volumeListInfo: any = await provider.api.listVolumes();
+          const engineName = provider.name;
+          const engineId = provider.id;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const volumeInfos = volumeListInfo.Volumes.map((volumeList: any) => {
+            const volumeInfo: VolumeInfo = { ...volumeList, engineName, engineId };
+
+            // do we have a matching volume in storage definition ?
+            const matchingVolume = (storageDefinition.Volumes || []).find(
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (volumeStorage: any) => volumeStorage.Name === volumeInfo.Name,
+            );
+            if (matchingVolume) {
+              volumeInfo.UsageData = matchingVolume.UsageData;
+            }
+
+            // if refCount > 0, we need to find the container using it
+            const containersUsingThisVolume = containers
+              .filter(container => container.Mounts.find(mount => mount.Name === volumeInfo.Name))
+              .map(container => {
+                return { id: container.Id, names: container.Names };
+              });
+            volumeInfo.containersUsage = containersUsingThisVolume;
+
+            // invalid in Podman https://github.com/containers/podman/issues/15720
+            if (volumeInfo.UsageData) {
+              volumeInfo.UsageData.RefCount = volumeInfo.containersUsage.length;
+            }
+
+            return volumeInfo;
+          });
+          return { Volumes: volumeInfos, Warnings: volumeListInfo.Warnings, engineName, engineId };
+        } catch (error) {
+          console.log('error in engine', provider.name, error);
+          return [];
+        }
+      }),
+    );
+    const flatttenedVolumes: VolumeListInfo[] = volumes.flat();
+    this.telemetryService.track('listVolumes', { total: flatttenedVolumes.length });
+    return flatttenedVolumes;
+  }
+
+  async getVolumeInspect(engineId: string, volumeName: string): Promise<VolumeInspectInfo> {
+    this.telemetryService.track('volumeInspect');
+    // need to find the container engine of the container
+    const provider = this.internalProviders.get(engineId);
+    if (!provider) {
+      throw new Error('no engine matching this container');
+    }
+    if (!provider.api) {
+      throw new Error('no running provider for the matching container');
+    }
+    const volumeObject = provider.api.getVolume(volumeName);
+    const volumeInspect = await volumeObject.inspect();
+    return {
+      engineName: provider.name,
+      engineId: provider.id,
+      ...volumeInspect,
+    };
+  }
+
+  async removeVolume(engineId: string, volumeName: string): Promise<void> {
+    this.telemetryService.track('removeVolume');
+    return this.getMatchingEngine(engineId).getVolume(volumeName).remove();
+  }
+
   protected getMatchingEngine(engineId: string): Dockerode {
     // need to find the container engine of the container
     const engine = this.internalProviders.get(engineId);
     if (!engine) {
-      throw new Error('no engine matching this container');
+      throw new Error('no engine matching this engine');
     }
     if (!engine.api) {
-      throw new Error('no running provider for the matching container');
+      throw new Error('no running provider for the matching engine');
     }
     return engine.api;
+  }
+
+  protected getMatchingPodmanEngine(engineId: string): LibPod {
+    // need to find the container engine of the container
+    const engine = this.internalProviders.get(engineId);
+    if (!engine) {
+      throw new Error('no engine matching this engine');
+    }
+    if (!engine.api) {
+      throw new Error('no running provider for the matching engine');
+    }
+    if (!engine.libpodApi) {
+      throw new Error('LibPod is not supported by this engine');
+    }
+    return engine.libpodApi;
   }
 
   public getFirstRunningConnection(): [ProviderContainerConnectionInfo, Dockerode] {
@@ -273,7 +504,7 @@ export class ContainerProviderRegistry {
   async deleteImage(engineId: string, id: string): Promise<void> {
     this.telemetryService.track('deleteImage');
     // use force to delete it even it is running
-    return this.getMatchingImage(engineId, id).remove();
+    return this.getMatchingImage(engineId, id).remove({ force: true });
   }
 
   getImageName(inspectInfo: Dockerode.ImageInspectInfo) {
@@ -288,8 +519,7 @@ export class ContainerProviderRegistry {
   async pushImage(engineId: string, imageTag: string, callback: (name: string, data: string) => void): Promise<void> {
     const engine = this.getMatchingEngine(engineId);
     const image = await engine.getImage(imageTag);
-    this.telemetryService.track('pushImage');
-
+    this.telemetryService.track('pushImage', { imageName: this.getImageHash(imageTag) });
     const authconfig = this.imageRegistry.getAuthconfigForImage(imageTag);
     const pushStream = await image.push({ authconfig });
     pushStream.on('end', () => {
@@ -310,6 +540,7 @@ export class ContainerProviderRegistry {
     imageName: string,
     callback: (event: PullEvent) => void,
   ): Promise<void> {
+    this.telemetryService.track('pullImage', { imageName: this.getImageHash(imageName) });
     const authconfig = this.imageRegistry.getAuthconfigForImage(imageName);
     const matchingEngine = this.getMatchingEngineFromConnection(providerContainerConnectionInfo);
     const pullStream = await matchingEngine.pull(imageName, {
@@ -339,6 +570,10 @@ export class ContainerProviderRegistry {
     return promise;
   }
 
+  getImageHash(imageName: string): string {
+    return crypto.createHash('sha512').update(imageName).digest('hex');
+  }
+
   async deleteContainer(engineId: string, id: string): Promise<void> {
     this.telemetryService.track('deleteContainer');
     // use force to delete it even it is running
@@ -348,6 +583,83 @@ export class ContainerProviderRegistry {
   async startContainer(engineId: string, id: string): Promise<void> {
     this.telemetryService.track('startContainer');
     return this.getMatchingContainer(engineId, id).start();
+  }
+
+  async generatePodmanKube(engineId: string, names: string[]): Promise<string> {
+    this.telemetryService.track('generatePodmanKube');
+    return this.getMatchingPodmanEngine(engineId).generateKube(names);
+  }
+
+  async startPod(engineId: string, podId: string): Promise<void> {
+    this.telemetryService.track('startPod');
+    return this.getMatchingPodmanEngine(engineId).startPod(podId);
+  }
+
+  async createPod(
+    selectedProvider: ProviderContainerConnectionInfo,
+    podOptions: PodCreateOptions,
+  ): Promise<{ engineId: string; Id: string }> {
+    this.telemetryService.track('createPod');
+    // grab all connections
+    const matchingContainerProvider = Array.from(this.internalProviders.values()).find(
+      containerProvider => containerProvider.connection.endpoint.socketPath === selectedProvider.endpoint.socketPath,
+    );
+    if (!matchingContainerProvider || !matchingContainerProvider.libpodApi) {
+      throw new Error('No provider with a running engine');
+    }
+    const result = await matchingContainerProvider.libpodApi.createPod(podOptions);
+    return { Id: result.Id, engineId: matchingContainerProvider.id };
+  }
+
+  async restartPod(engineId: string, podId: string): Promise<void> {
+    this.telemetryService.track('restartPod');
+    return this.getMatchingPodmanEngine(engineId).restartPod(podId);
+  }
+
+  async replicatePodmanContainer(
+    source: { engineId: string; id: string },
+    target: { engineId: string },
+    overrideParameters: PodmanContainerCreateOptions,
+  ): Promise<{ Id: string; Warnings: string[] }> {
+    this.telemetryService.track('replicatePodmanContainer');
+
+    // will publish in the target engine
+    const libPod = this.getMatchingPodmanEngine(target.engineId);
+
+    // grab content of the current container to replicate
+    const containerToReplicate = await this.getContainerInspect(source.engineId, source.id);
+
+    // convert env from array of string to an object with key being the env name
+    const updatedEnv = containerToReplicate.Config.Env.reduce((acc: { [key: string]: string }, env) => {
+      const [key, value] = env.split('=');
+      acc[key] = value;
+      return acc;
+    }, {});
+
+    // build create container configuration
+    const originalConfiguration = {
+      command: containerToReplicate.Config.Cmd,
+      entrypoint: containerToReplicate.Config.Entrypoint,
+      env: updatedEnv,
+      image: containerToReplicate.Config.Image,
+    };
+
+    // add extra information
+    const configuration = {
+      ...originalConfiguration,
+      ...overrideParameters,
+    };
+    return libPod.createContainer(configuration);
+  }
+
+  async stopPod(engineId: string, podId: string): Promise<void> {
+    this.telemetryService.track('stopPod');
+    return this.getMatchingPodmanEngine(engineId).stopPod(podId);
+  }
+
+  async removePod(engineId: string, podId: string): Promise<void> {
+    this.telemetryService.track('removePod');
+    return this.getMatchingPodmanEngine(engineId).removePod(podId);
   }
 
   async restartContainer(engineId: string, id: string): Promise<void> {
@@ -424,6 +736,7 @@ export class ContainerProviderRegistry {
   }
 
   async getImageInspect(engineId: string, id: string): Promise<ImageInspectInfo> {
+    this.telemetryService.track('imageInspect');
     // need to find the container engine of the container
     const provider = this.internalProviders.get(engineId);
     if (!provider) {
@@ -441,6 +754,139 @@ export class ContainerProviderRegistry {
     };
   }
 
+  async getImageHistory(engineId: string, id: string): Promise<HistoryInfo[]> {
+    this.telemetryService.track('imageHistory');
+    // need to find the container engine of the container
+    const provider = this.internalProviders.get(engineId);
+    if (!provider) {
+      throw new Error('no engine matching this container');
+    }
+    if (!provider.api) {
+      throw new Error('no running provider for the matching container');
+    }
+    const imageObject = provider.api.getImage(id);
+    return imageObject.history();
+  }
+
+  async getContainerInspect(engineId: string, id: string): Promise<ContainerInspectInfo> {
+    this.telemetryService.track('containerInspect');
+    // need to find the container engine of the container
+    const provider = this.internalProviders.get(engineId);
+    if (!provider) {
+      throw new Error('no engine matching this container');
+    }
+    if (!provider.api) {
+      throw new Error('no running provider for the matching container');
+    }
+
+    const containerObject = provider.api.getContainer(id);
+    const containerInspect = await containerObject.inspect();
+    return {
+      engineName: provider.name,
+      engineId: provider.id,
+      ...containerInspect,
+    };
+  }
+
+  async getPodInspect(engineId: string, id: string): Promise<PodInspectInfo> {
+    this.telemetryService.track('podInspect');
+    // need to find the container engine of the container
+    const provider = this.internalProviders.get(engineId);
+    if (!provider) {
+      throw new Error('no engine matching this container');
+    }
+    if (!provider.libpodApi) {
+      throw new Error('no running provider for the matching container');
+    }
+
+    const containerInspect = await provider.libpodApi.getPodInspect(id);
+    return {
+      engineName: provider.name,
+      engineId: provider.id,
+      ...containerInspect,
+    };
+  }
+
+  private statsConsumerId = 0;
+  private statsConsumer = new Map<number, NodeJS.ReadableStream>();
+
+  async stopContainerStats(id: number): Promise<void> {
+    const consumer = this.statsConsumer.get(id);
+    if (consumer) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (consumer as any).destroy();
+      this.statsConsumer.delete(id);
+    }
+  }
+
+  async getContainerStats(
+    engineId: string,
+    id: string,
+    callback: (stats: ContainerStatsInfo) => void,
+  ): Promise<number> {
+    this.telemetryService.track('containerStats');
+    // need to find the container engine of the container
+    const provider = this.internalProviders.get(engineId);
+    if (!provider) {
+      throw new Error('no engine matching this container');
+    }
+    if (!provider.api) {
+      throw new Error('no running provider for the matching container');
+    }
+
+    const containerObject = provider.api.getContainer(id);
+    this.statsConsumerId++;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let stream: any;
+    try {
+      stream = (await containerObject.stats({ stream: true })) as unknown as NodeJS.ReadableStream;
+      this.statsConsumer.set(this.statsConsumerId, stream);
+
+      const pipeline = stream?.pipe(StreamValues.withParser());
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      pipeline?.on('error', (error: any) => {
+        console.error('Error while grabbing stats', error);
+        try {
+          stream?.destroy();
+          this.statsConsumer.delete(this.statsConsumerId);
+        } catch (error) {
+          console.error('Error while destroying stream', error);
+        }
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      pipeline?.on('data', (data: any) => {
+        if (data?.value) {
+          callback({
+            engineName: provider.name,
+            engineId: provider.id,
+            ...data.value,
+          });
+        }
+      });
+    } catch (error) {
+      // try to destroy the stream
+      stream?.destroy();
+      this.statsConsumer.delete(this.statsConsumerId);
+    }
+
+    return this.statsConsumerId;
+  }
+
+  async playKube(
+    kubernetesYamlFilePath: string,
+    selectedProvider: ProviderContainerConnectionInfo,
+  ): Promise<PlayKubeInfo> {
+    this.telemetryService.track('playKube');
+    // grab all connections
+    const matchingContainerProvider = Array.from(this.internalProviders.values()).find(
+      containerProvider => containerProvider.connection.endpoint.socketPath === selectedProvider.endpoint.socketPath,
+    );
+    if (!matchingContainerProvider || !matchingContainerProvider.libpodApi) {
+      throw new Error('No provider with a running engine');
+    }
+    return matchingContainerProvider.libpodApi.playKube(kubernetesYamlFilePath);
+  }
+
   async buildImage(
     containerBuildContextDirectory: string,
     relativeContainerfilePath: string,
@@ -451,7 +897,9 @@ export class ContainerProviderRegistry {
     this.telemetryService.track('buildImage');
     // grab all connections
     const matchingContainerProvider = Array.from(this.internalProviders.values()).find(
-      containerProvider => containerProvider.connection.endpoint.socketPath === selectedProvider.endpoint.socketPath,
+      containerProvider =>
+        containerProvider.connection.endpoint.socketPath === selectedProvider.endpoint.socketPath &&
+        selectedProvider.status === 'started',
     );
     if (!matchingContainerProvider || !matchingContainerProvider.api) {
       throw new Error('No provider with a running engine');

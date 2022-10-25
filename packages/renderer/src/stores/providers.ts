@@ -19,12 +19,21 @@
 import type { Writable } from 'svelte/store';
 import { writable } from 'svelte/store';
 import type { ProviderInfo } from '../../../main/src/plugin/api/provider-info';
+const updateProviderCallbacks = [];
 export async function fetchProviders() {
   const result = await window.getProviderInfos();
   providerInfos.set(result);
+  result.forEach(providerInfo => {
+    // register only if none for this provider id
+    if (!updateProviderCallbacks.includes[providerInfo.internalId]) {
+      window.onDidUpdateProviderStatus(providerInfo.internalId, () => {
+        fetchProviders();
+      });
+      updateProviderCallbacks.push(providerInfo.internalId);
+    }
+  });
 }
 
-fetchProviders();
 export const providerInfos: Writable<ProviderInfo[]> = writable([]);
 
 // need to refresh when extension is started or stopped
@@ -46,7 +55,15 @@ window?.events.receive('provider-lifecycle-change', () => {
 window?.events.receive('provider-change', () => {
   fetchProviders();
 });
-
+window?.events.receive('provider-create', () => {
+  fetchProviders();
+});
+window?.events.receive('provider-delete', () => {
+  fetchProviders();
+});
 window?.events.receive('provider:update-status', () => {
+  fetchProviders();
+});
+window.addEventListener('system-ready', () => {
   fetchProviders();
 });

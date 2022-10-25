@@ -16,6 +16,24 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
+// type of groups
+export enum ContainerGroupInfoTypeUI {
+  STANDALONE = 'standalone',
+  COMPOSE = 'compose',
+  POD = 'pod',
+}
+
+export interface ContainerGroupPartInfoUI {
+  // The name and type of each group
+  name: string;
+  type: ContainerGroupInfoTypeUI;
+
+  // Information regarding the entire group (ex. name of the pod)
+  // as well as the "engine" running the group (ex. podman or docker)
+  id?: string;
+  engineId?: string;
+}
+
 export interface ContainerInfoUI {
   id: string;
   shortId: string;
@@ -23,9 +41,24 @@ export interface ContainerInfoUI {
   image: string;
   engineId: string;
   engineName: string;
+  engineType: 'podman' | 'docker';
   state: string;
+  uptime: string;
+  startedAt: string;
   port: string;
   command: string;
   hasPublicPort: boolean;
   openingUrl?: string;
+  groupInfo: ContainerGroupPartInfoUI;
+  selected: boolean;
+}
+
+export interface ContainerGroupInfoUI extends ContainerGroupPartInfoUI {
+  // menu being expanded or collapsed
+  expanded: boolean;
+
+  selected: boolean;
+
+  // list of containers in this group
+  containers: ContainerInfoUI[];
 }

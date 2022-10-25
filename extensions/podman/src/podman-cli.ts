@@ -20,51 +20,93 @@ import { spawn } from 'node:child_process';
 import type * as extensionApi from '@tmpwip/extension-api';
 import { isMac, isWindows } from './util';
 
+const macosExtraPath = '/usr/local/bin:/opt/homebrew/bin:/opt/local/bin:/opt/podman/bin';
+
+export function getInstallationPath(): string {
+  const env = process.env;
+  if (isWindows) {
+    return `c:\\Program Files\\RedHat\\Podman;${env.PATH}`;
+  } else if (isMac) {
+    if (!env.PATH) {
+      return macosExtraPath;
+    } else {
+      return env.PATH.concat(':').concat(macosExtraPath);
+    }
+  } else {
+    return env.PATH;
+  }
+}
+
 export function getPodmanCli(): string {
   if (isWindows) {
-    return 'c:\\Program Files\\RedHat\\Podman\\podman.exe';
+    return 'podman.exe';
   }
   return 'podman';
 }
 
-export function execPromise(command: string, args?: string[], logger?: extensionApi.Logger): Promise<string> {
-  const env = process.env;
+export interface ExecOptions {
+  logger?: extensionApi.Logger;
+  env?: NodeJS.ProcessEnv | undefined;
+}
+
+export function execPromise(command: string, args?: string[], options?: ExecOptions): Promise<string> {
+  let env = Object.assign({}, process.env); // clone original env object
+
   // In production mode, applications don't have access to the 'user' path like brew
-  if (isMac) {
-    env.PATH = env.PATH.concat(':/usr/local/bin').concat(':/opt/homebrew/bin').concat(':/opt/local/bin');
+  if (isMac || isWindows) {
+    env.PATH = getInstallationPath();
   } else if (env.FLATPAK_ID) {
     // need to execute the command on the host
     args = ['--host', command, ...args];
     command = 'flatpak-spawn';
   }
+
+  if (options?.env) {
+    env = Object.assign(env, options.env);
+  }
   return new Promise((resolve, reject) => {
-    let output = '';
-    let err = '';
+    let stdOut = '';
+    let stdErr = '';
     const process = spawn(command, args, { env });
-    process.on('error', err => {
-      reject(err);
+    process.on('error', error => {
+      let content = '';
+      if (stdOut && stdOut !== '') {
+        content += stdOut + '\n';
+      }
+      if (stdErr && stdErr !== '') {
+        content += stdErr + '\n';
+      }
+      reject(content + error);
     });
     process.stdout.setEncoding('utf8');
     process.stdout.on('data', data => {
-      output += data;
-      logger?.log(data);
+      stdOut += data;
+      options?.logger?.log(data);
     });
     process.stderr.setEncoding('utf8');
     process.stderr.on('data', data => {
-      err += data;
-      logger?.error(data);
+      stdErr += data;
+      options?.logger?.error(data);
     });
 
     process.on('close', exitCode => {
-      if (exitCode !== 0) {
-        reject(err);
+      let content = '';
+      if (stdOut && stdOut !== '') {
+        content += stdOut + '\n';
       }
-      resolve(output.trim());
+      if (stdErr && stdErr !== '') {
+        content += stdErr + '\n';
+      }
+
+      if (exitCode !== 0) {
+        reject(content);
+      }
+      resolve(stdOut.trim());
     });
   });
 }
 
-interface InstalledPodman {
+export interface InstalledPodman {
   version: string;
 }
 

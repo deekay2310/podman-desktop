@@ -21,10 +21,10 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as fs from 'node:fs';
 import * as childProcess from 'node:child_process';
-// import * as which from 'which';
 import type { Status } from './daemon-commander';
 import { DaemonCommander } from './daemon-commander';
 import { LogProvider } from './log-provider';
+import { isMac, isWindows } from './util';
 
 const commander = new DaemonCommander();
 let daemonProcess: childProcess.ChildProcess;
@@ -35,11 +35,25 @@ let crcStatus: Status;
 const crcLogProvider = new LogProvider(commander);
 
 export async function activate(extensionContext: extensionApi.ExtensionContext): Promise<void> {
+  // crc is installed or not ?
+  if (!fs.existsSync(crcBinary())) {
+    console.warn('Can not find CRC binary!');
+    return;
+  }
+
   // detect preset of CRC
   const preset = await readPreset();
 
   // create CRC provider
-  const provider = extensionApi.provider.createProvider({ name: 'CRC', id: 'crc', status: 'unknown' });
+  const provider = extensionApi.provider.createProvider({
+    name: 'CRC',
+    id: 'crc',
+    status: 'unknown',
+    images: {
+      icon: './icon.png',
+      logo: './icon.png',
+    },
+  });
   extensionContext.subscriptions.push(provider);
 
   const daemonStarted = await daemonStart();
@@ -55,7 +69,7 @@ export async function activate(extensionContext: extensionApi.ExtensionContext):
   }
 
   const providerLifecycle: extensionApi.ProviderLifecycle = {
-    status: () => convertToStatus(crcStatus?.CrcStatus),
+    status: () => convertToProviderStatus(crcStatus?.CrcStatus),
 
     start: async context => {
       try {
@@ -88,20 +102,24 @@ export async function activate(extensionContext: extensionApi.ExtensionContext):
   startStatusUpdateTimer();
 }
 
-async function daemonStart(): Promise<boolean> {
-  // const crc = await crcBinary();
-  // console.error(`Crc: ${crc}`);
-  // if (!crc) {
-  //   return false;
-  // }
-  // launching the daemon
-
-  // TODO: this is temporary
-  if (os.platform() !== 'darwin') {
-    return false;
+function crcBinary(): string {
+  if (isWindows) {
+    // This returns `crc` as located in c:\Program Files\OpenShift Local\
+    return path.join('C:\\Program Files\\Red Hat OpenShift Local\\crc.exe');
   }
 
-  daemonProcess = childProcess.spawn('/usr/local/bin/crc', ['daemon', '--watchdog'], {
+  if (isMac) {
+    // This returns `crc` as located in /usr/local/bin/crc
+    return '/usr/local/bin/crc';
+  }
+
+  // No path provided
+  return 'crc';
+}
+
+async function daemonStart(): Promise<boolean> {
+  // launching the daemon
+  daemonProcess = childProcess.spawn(crcBinary(), ['daemon', '--watchdog'], {
     detached: true,
     windowsHide: true,
   });
@@ -125,7 +143,7 @@ async function daemonStart(): Promise<boolean> {
 
 function registerPodmanConnection(provider: extensionApi.Provider, extensionContext: extensionApi.ExtensionContext) {
   let socketPath;
-  const isWindows = os.platform() === 'win32';
+
   if (isWindows) {
     socketPath = '//./pipe/crc-podman';
   } else {
@@ -133,7 +151,7 @@ function registerPodmanConnection(provider: extensionApi.Provider, extensionCont
   }
 
   if (fs.existsSync(socketPath)) {
-    const status = () => convertToStatus(crcStatus?.CrcStatus);
+    const status = () => convertToConnectionStatus(crcStatus?.CrcStatus);
 
     const containerConnection: extensionApi.ContainerProviderConnection = {
       name: 'Podman',
@@ -165,7 +183,7 @@ async function registerOpenShiftLocalCluster(
   provider: extensionApi.Provider,
   extensionContext: extensionApi.ExtensionContext,
 ): Promise<void> {
-  const status = () => convertToStatus(crcStatus?.CrcStatus);
+  const status = () => convertToConnectionStatus(crcStatus?.CrcStatus);
   const apiURL = 'https://api.crc.testing:6443';
   const kubernetesProviderConnection: extensionApi.KubernetesProviderConnection = {
     name: 'OpenShift',
@@ -179,7 +197,23 @@ async function registerOpenShiftLocalCluster(
   extensionContext.subscriptions.push(disposable);
 }
 
-function convertToStatus(crcStatus: string): extensionApi.ProviderConnectionStatus {
+function convertToConnectionStatus(crcStatus: string): extensionApi.ProviderConnectionStatus {
+  switch (crcStatus) {
+    case 'Running':
+      return 'started';
+    case 'Starting':
+      return 'starting';
+    case 'Stopping':
+      return 'stopping';
+    case 'Stopped':
+    case 'No Cluster':
+      return 'stopped';
+    default:
+      return 'unknown';
+  }
+}
+
+function convertToProviderStatus(crcStatus: string): extensionApi.ProviderStatus {
   switch (crcStatus) {
     case 'Running':
       return 'started';
@@ -189,6 +223,8 @@ function convertToStatus(crcStatus: string): extensionApi.ProviderConnectionStat
       return 'stopping';
     case 'Stopped':
       return 'stopped';
+    case 'No Cluster':
+      return 'configured';
     default:
       return 'unknown';
   }

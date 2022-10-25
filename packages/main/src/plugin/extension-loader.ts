@@ -32,6 +32,11 @@ import type { Dialogs } from './dialog-impl';
 import type { ProgressImpl } from './progress-impl';
 import { ProgressLocation } from './progress-impl';
 import type { NotificationImpl } from './notification-impl';
+import { StatusBarItemImpl } from './statusbar/statusbar-item';
+import type { StatusBarRegistry } from './statusbar/statusbar-registry';
+import { StatusBarAlignLeft, StatusBarAlignRight, StatusBarItemDefaultPriority } from './statusbar/statusbar-item';
+import { FilesystemMonitoring } from './filesystem-monitoring';
+import { Uri } from './types/uri';
 
 /**
  * Handle the loading of an extension
@@ -61,6 +66,7 @@ export class ExtensionLoader {
   private activatedExtensions = new Map<string, ActivatedExtension>();
   private analyzedExtensions = new Map<string, AnalyzedExtension>();
   private extensionsStoragePath = '';
+  private fileSystemMonitoring: FilesystemMonitoring;
 
   constructor(
     private commandRegistry: CommandRegistry,
@@ -73,7 +79,10 @@ export class ExtensionLoader {
     private dialogs: Dialogs,
     private progress: ProgressImpl,
     private notifications: NotificationImpl,
-  ) {}
+    private statusBarRegistry: StatusBarRegistry,
+  ) {
+    this.fileSystemMonitoring = new FilesystemMonitoring();
+  }
 
   async listExtensions(): Promise<ExtensionInfo[]> {
     return Array.from(this.analyzedExtensions.values()).map(extension => ({
@@ -158,11 +167,7 @@ export class ExtensionLoader {
 
   async readDevelopmentFolders(path: string): Promise<string[]> {
     const entries = await fs.promises.readdir(path, { withFileTypes: true });
-    return entries
-      .filter(entry => entry.isDirectory())
-      .map(directory => path + '/' + directory.name)
-      .filter(item => !item.includes('docker'))
-      .filter(item => !item.includes('lima'));
+    return entries.filter(entry => entry.isDirectory()).map(directory => path + '/' + directory.name);
   }
 
   async readProductionFolders(path: string): Promise<string[]> {
@@ -172,13 +177,49 @@ export class ExtensionLoader {
       .map(directory => path + '/' + directory.name + `/builtin/${directory.name}.cdix`);
   }
 
+  getBase64Image(imagePath: string): string {
+    const imageContent = fs.readFileSync(imagePath);
+
+    // convert to base64
+    const base64Content = Buffer.from(imageContent).toString('base64');
+
+    const base64Image = `data:image/png;base64,${base64Content}`;
+
+    // create base64 image content
+    return base64Image;
+  }
+
+  /**
+   * Update the image to be a base64 content
+   */
+  updateImage(
+    image: undefined | string | { light: string; dark: string },
+    rootPath: string,
+  ): undefined | string | { light: string; dark: string } {
+    // do nothing if no image
+    if (!image) {
+      return undefined;
+    }
+    if (typeof image === 'string') {
+      return this.getBase64Image(path.resolve(rootPath, image));
+    } else {
+      if (image.light) {
+        image.light = this.getBase64Image(path.resolve(rootPath, image.light));
+      }
+      if (image.dark) {
+        image.dark = this.getBase64Image(path.resolve(rootPath, image.dark));
+      }
+      return image;
+    }
+  }
+
   async loadExtension(extensionPath: string): Promise<void> {
     // load manifest
     const manifest = await this.loadManifest(extensionPath);
     this.overrideRequire();
 
     // create api object
-    const api = this.createApi(manifest);
+    const api = this.createApi(extensionPath, manifest);
 
     const extension: AnalyzedExtension = {
       id: manifest.name,
@@ -199,11 +240,11 @@ export class ExtensionLoader {
     this.analyzedExtensions.set(extension.id, extension);
     const runtime = this.loadRuntime(extension.mainPath);
 
-    return this.activateExtension(extension, runtime);
+    await this.activateExtension(extension, runtime);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  createApi(extManifest: any): typeof containerDesktopAPI {
+  createApi(extensionPath: string, extManifest: any): typeof containerDesktopAPI {
     const commandRegistry = this.commandRegistry;
     const commands: typeof containerDesktopAPI.commands = {
       registerCommand(
@@ -224,16 +265,29 @@ export class ExtensionLoader {
     //export function executeCommand<T = unknown>(command: string, ...rest: any[]): PromiseLike<T>;
 
     const containerProviderRegistry = this.providerRegistry;
+
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const instance = this;
     const provider: typeof containerDesktopAPI.provider = {
       createProvider(providerOptions: containerDesktopAPI.ProviderOptions): containerDesktopAPI.Provider {
+        // update path of images using the extension path
+        if (providerOptions.images) {
+          const images = providerOptions.images;
+          instance.updateImage.bind(instance);
+          images.icon = instance.updateImage(images.icon, extensionPath);
+          images.logo = instance.updateImage(images.logo, extensionPath);
+        }
         return containerProviderRegistry.createProvider(providerOptions);
       },
     };
 
     const trayMenuRegistry = this.trayMenuRegistry;
     const tray: typeof containerDesktopAPI.tray = {
-      registerMenuItem(providerId: string, item: containerDesktopAPI.MenuItem): containerDesktopAPI.Disposable {
-        return trayMenuRegistry.registerMenuItem(providerId, item);
+      registerMenuItem(item: containerDesktopAPI.MenuItem): containerDesktopAPI.Disposable {
+        return trayMenuRegistry.registerMenuItem(item);
+      },
+      registerProviderMenuItem(providerId: string, item: containerDesktopAPI.MenuItem): containerDesktopAPI.Disposable {
+        return trayMenuRegistry.registerProviderMenuItem(providerId, item);
       },
     };
     const configurationRegistry = this.configurationRegistry;
@@ -299,18 +353,51 @@ export class ExtensionLoader {
       showNotification: (options: containerDesktopAPI.NotificationOptions): containerDesktopAPI.Disposable => {
         return notifications.showNotification(options);
       },
+
+      createStatusBarItem: (
+        param1?: containerDesktopAPI.StatusBarAlignment | number,
+        param2?: number,
+      ): containerDesktopAPI.StatusBarItem => {
+        let alignment: containerDesktopAPI.StatusBarAlignment = StatusBarAlignLeft;
+        let priority = StatusBarItemDefaultPriority;
+
+        if (typeof param2 !== 'undefined') {
+          alignment = param1 as containerDesktopAPI.StatusBarAlignment;
+          priority = param2;
+        } else if (typeof param1 !== 'undefined') {
+          if (typeof param1 === 'string') {
+            alignment = param1 as containerDesktopAPI.StatusBarAlignment;
+          } else {
+            priority = param1;
+          }
+        }
+
+        return new StatusBarItemImpl(this.statusBarRegistry, alignment, priority);
+      },
+    };
+
+    const fileSystemMonitoring = this.fileSystemMonitoring;
+    const fs: typeof containerDesktopAPI.fs = {
+      createFileSystemWatcher(path: string): containerDesktopAPI.FileSystemWatcher {
+        return fileSystemMonitoring.createFileSystemWatcher(path);
+      },
     };
 
     return <typeof containerDesktopAPI>{
       // Types
       Disposable: Disposable,
+      Uri: Uri,
       commands,
       registry,
       provider,
+      fs,
       configuration,
       tray,
       ProgressLocation,
       window: windowObj,
+      StatusBarItemDefaultPriority,
+      StatusBarAlignLeft,
+      StatusBarAlignRight,
     };
   }
 
@@ -420,5 +507,9 @@ export class ExtensionLoader {
     if (extension) {
       await this.loadExtension(extension?.path);
     }
+  }
+
+  getConfigurationRegistry(): ConfigurationRegistry {
+    return this.configurationRegistry;
   }
 }

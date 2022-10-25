@@ -49,7 +49,9 @@ const config = {
     rollupOptions: {
       external: [
         'electron',
+        '@kubernetes/client-node',
         'tar-fs',
+        'ssh2',
         'analytics-node',
         'electron-devtools-installer',
         ...builtinModules.flatMap(p => [p, `node:${p}`]),

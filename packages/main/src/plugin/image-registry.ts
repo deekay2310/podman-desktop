@@ -22,6 +22,15 @@ import { Emitter } from './events/emitter';
 import type * as Dockerode from 'dockerode';
 import type { Telemetry } from './telemetry/telemetry';
 import * as crypto from 'node:crypto';
+import got from 'got';
+import { RequestError } from 'got';
+
+export interface RegistryAuthInfo {
+  authUrl: string;
+  service?: string;
+  scope?: string;
+  scheme: string;
+}
 
 export class ImageRegistry {
   private registries: containerDesktopAPI.Registry[] = [];
@@ -41,18 +50,25 @@ export class ImageRegistry {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(private apiSender: any, private telemetryService: Telemetry) {}
 
-  getAuthconfigForImage(imageName: string): Dockerode.AuthConfig | undefined {
-    // do we have some auth for this image
-    // try to extract registry part from the image
-
-    // no / in the imageName
-    let registryServer: string | undefined;
-    if (imageName.indexOf('/') === -1 || imageName.split('/').length == 2) {
-      registryServer = 'docker.io';
-    } else if (imageName.split('/').length == 3) {
+  extractRegistryServerFromImage(imageName: string): string | undefined {
+    // check if image is a valid identifier for dockerhub
+    const splitParts = imageName.split('/');
+    if (
+      splitParts.length === 1 ||
+      (!splitParts[0].includes('.') && !splitParts[0].includes(':') && splitParts[0] != 'localhost')
+    ) {
+      return 'docker.io';
+    } else {
       // if image name contains two /, we assume there is a registry at the beginning
-      registryServer = imageName.split('/')[0];
+      return splitParts[0];
     }
+  }
+
+  /**
+   * Provides authentication information for the given image if any.
+   */
+  getAuthconfigForImage(imageName: string): Dockerode.AuthConfig | undefined {
+    const registryServer = this.extractRegistryServerFromImage(imageName);
     let authconfig;
     if (registryServer) {
       const matchingUrl = registryServer;
@@ -122,7 +138,10 @@ export class ImageRegistry {
     });
   }
 
-  createRegistry(providerName: string, registryCreateOptions: containerDesktopAPI.RegistryCreateOptions): Disposable {
+  async createRegistry(
+    providerName: string,
+    registryCreateOptions: containerDesktopAPI.RegistryCreateOptions,
+  ): Promise<Disposable> {
     const provider = this.providers.get(providerName);
     if (!provider) {
       throw new Error(`Provider ${providerName} not found`);
@@ -134,6 +153,11 @@ export class ImageRegistry {
     if (exists) {
       throw new Error(`Registry ${registryCreateOptions.serverUrl} already exists`);
     }
+    await this.checkCredentials(
+      registryCreateOptions.serverUrl,
+      registryCreateOptions.username,
+      registryCreateOptions.secret,
+    );
     const registry = provider.create(registryCreateOptions);
     this.telemetryService.track('createRegistry', {
       serverUrlHash: this.getRegistryHash(registryCreateOptions),
@@ -142,12 +166,13 @@ export class ImageRegistry {
     return this.registerRegistry(registry);
   }
 
-  updateRegistry(registryUrl: string, registry: containerDesktopAPI.Registry): void {
+  updateRegistry(registry: containerDesktopAPI.Registry): void {
     const matchingRegistry = this.registries.find(
-      existringRegistry => registry.serverUrl === registry.serverUrl && registry.source === existringRegistry.source,
+      existringRegistry =>
+        registry.serverUrl === existringRegistry.serverUrl && registry.source === existringRegistry.source,
     );
     if (!matchingRegistry) {
-      throw new Error(`Registry ${registryUrl} was not found`);
+      throw new Error(`Registry ${registry.serverUrl} was not found`);
     }
     matchingRegistry.username = registry.username;
     matchingRegistry.secret = registry.secret;
@@ -157,5 +182,110 @@ export class ImageRegistry {
     });
     this.apiSender.send('registry-update', registry);
     this._onDidUpdateRegistry.fire(Object.freeze(registry));
+  }
+
+  // grab authentication data from the www-authenticate header
+  // undefined if not able to grab data
+  extractAuthData(wwwAuthenticate: string): RegistryAuthInfo | undefined {
+    // example of www-authenticate header
+    // Www-Authenticate: Bearer realm="https://auth.docker.io/token",service="registry.docker.io",scope="repository:samalba/my-app:pull,push"
+    // need to extract realm, service and scope parameters with a regexp
+    const WWW_AUTH_REGEXP =
+      /(?<scheme>Bearer|Basic) realm="(?<realm>[^"]+)"(,service="(?<service>[^"]+)")?(,scope="(?<scope>[^"]+)")?/;
+
+    const parsed = WWW_AUTH_REGEXP.exec(wwwAuthenticate);
+    if (parsed && parsed.groups) {
+      const { realm, service, scope, scheme } = parsed.groups;
+      return { authUrl: realm, service, scope, scheme };
+    }
+    return undefined;
+  }
+
+  async getAuthInfo(serviceUrl: string): Promise<{ authUrl: string | undefined; scheme: string }> {
+    let registryUrl: string;
+
+    if (serviceUrl.includes('docker.io')) {
+      registryUrl = 'https://index.docker.io/v2/';
+    } else {
+      registryUrl = `${serviceUrl}/v2/`;
+
+      if (!registryUrl.startsWith('http')) {
+        registryUrl = `https://${registryUrl}`;
+      }
+    }
+
+    let authUrl: string | undefined;
+    let scheme = '';
+    try {
+      await got.get(registryUrl);
+    } catch (requestErr) {
+      if (requestErr instanceof RequestError) {
+        const wwwAuthenticate = requestErr.response?.headers['www-authenticate'];
+        if (wwwAuthenticate) {
+          const authInfo = this.extractAuthData(wwwAuthenticate);
+          if (authInfo) {
+            const url = new URL(authInfo.authUrl);
+            scheme = authInfo.scheme?.toLowerCase();
+            // in case of basic auth, we use directly the registry URL
+            if (scheme === 'basic') {
+              return { authUrl: registryUrl, scheme };
+            }
+            if (authInfo.service) {
+              url.searchParams.set('service', authInfo.service);
+            }
+            if (authInfo.scope) {
+              url.searchParams.set('scope', authInfo.scope);
+            }
+            authUrl = url.toString();
+          }
+        }
+      }
+    }
+
+    if (authUrl === undefined) {
+      throw Error('Not a valid registry');
+    }
+
+    return { authUrl, scheme };
+  }
+
+  async checkCredentials(serviceUrl: string, username: string, password: string): Promise<void> {
+    const { authUrl, scheme } = await this.getAuthInfo(serviceUrl);
+    if (authUrl !== undefined) {
+      await this.doCheckCredentials(scheme, authUrl, username, password);
+    }
+  }
+
+  async doCheckCredentials(scheme: string, authUrl: string, username: string, password: string): Promise<void> {
+    let rawResponse: string | undefined;
+    // add credentials in the header
+    // encode username:password in base64
+    const token = Buffer.from(`${username}:${password}`).toString('base64');
+    const headers = {
+      Authorization: `Basic ${token}`,
+    };
+    try {
+      const { body } = await got.get(authUrl, {
+        headers,
+      });
+      rawResponse = body;
+    } catch (requestErr) {
+      if (
+        requestErr instanceof RequestError &&
+        (requestErr.response?.statusCode === 401 || requestErr.response?.statusCode === 403)
+      ) {
+        throw Error('Wrong Username or Password');
+      } else if (requestErr instanceof Error) {
+        throw Error(requestErr.message);
+      }
+    }
+
+    // no error with basic scheme, it means it's a valid connection
+    if (scheme === 'basic') {
+      return;
+    }
+    if (rawResponse !== undefined && !rawResponse.includes('token')) {
+      throw Error('Unable to validate provided credentials');
+    }
   }
 }
